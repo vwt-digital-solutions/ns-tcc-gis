@@ -5,20 +5,28 @@ import config
 
 def get_access_token():
     data = {
-        "client_id": config.CLIENT_ID,
-        "client_secret": config.CLIENT_SECRET,
-        "grant_type": "client_credentials"
+        "f": "json",
+        "username": config.CLIENT_USERNAME,
+        "password": config.CLIENT_PASSWORD,
+        "request": "gettoken",
+        "referer": config.CLIENT_REFERER
     }
 
     response = requests.post(config.OAUTH_URL, data=data).json()
 
-    return response["access_token"]
+    return response["token"]
 
 
 def add_feature(x, y, name, hostname, host_groups, layer):
     adds = [
         {
-            "geometry": {"x": x, "y": y},
+            "geometry": {
+                "x": x,
+                "y": y,
+                "spatalReference": {
+                    "wkid": 4326
+                }
+            },
             "attributes": {
                 "name": name,
                 "hostname": hostname,
@@ -28,12 +36,12 @@ def add_feature(x, y, name, hostname, host_groups, layer):
     ]
 
     data = {
-        "adds": adds,
+        "adds": str(adds),
         "f": "json",
         "token": get_access_token()
     }
 
-    r = requests.post(config.SERVICE_URL + f"/{layer}/addFeatures", data=data).json()
+    r = requests.post(config.SERVICE_URL + f"/{layer}/applyEdits", data=data).json()
 
     return r["addResults"]
 

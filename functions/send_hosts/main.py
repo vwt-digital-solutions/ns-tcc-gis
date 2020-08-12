@@ -53,10 +53,18 @@ def add_feature(x, y, name, hostname, host_groups, layer):
 
 
 def new_host(data):
+
+    if isinstance(data, list):
+        data = data
+    else:
+        data = [data]
+
     for host in data:
         # Check if host is already posted on ArcGIS
         unique_id = host["siteName"] + "_" + host["hostName"]
-        doc = db.collection(u'hosts').document(unique_id).get()
+
+        ref = db.collection(u'hosts').document(unique_id)
+        doc = ref.get()
 
         if not doc.exists:
             # If host is not posted then make new feature on ArcGIS and save the ObjectID in the firestore
@@ -71,8 +79,7 @@ def new_host(data):
 
             logging.info(f'Successfully added {unique_id} as feature with object_id {object_id}')
 
-            doc_ref = db.collection(u'hosts').document(unique_id)
-            doc_ref.set({
+            ref.set({
                 u'object_id': object_id,
             })
 

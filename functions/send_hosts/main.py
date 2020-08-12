@@ -54,12 +54,7 @@ def add_feature(x, y, name, hostname, host_groups, layer):
 
 def new_host(data):
 
-    if isinstance(data, list):
-        data = data
-    else:
-        data = [data]
-
-    for host in data:
+    for host in data["ns_tcc_hosts"]:
         # Check if host is already posted on ArcGIS
         unique_id = host["siteName"] + "_" + host["hostName"]
 
@@ -82,6 +77,8 @@ def new_host(data):
             ref.set({
                 u'object_id': object_id,
             })
+        else:
+            logging.info(f'Feature with id {unique_id} was already added')
 
 
 def main(request):

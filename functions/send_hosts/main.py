@@ -63,14 +63,19 @@ def new_host(data):
 
         if not doc.exists:
             # If host is not posted then make new feature on ArcGIS and save the ObjectID in the firestore
-            object_id = add_feature(
-                float(host["longitude"]),
-                float(host["latitude"]),
-                host["siteName"],
-                host["hostName"],
-                [],
-                3
-            )
+            try:
+                object_id = add_feature(
+                    float(host["longitude"]),
+                    float(host["latitude"]),
+                    host["siteName"],
+                    host["hostName"],
+                    [],
+                    3
+                )
+            except (TypeError, ValueError) as e:
+                logging.error(f'Error when adding feature: {e}')
+                logging.debug(f'Message: {host}')
+                continue
 
             logging.info(f'Successfully added {unique_id} as feature with object_id {object_id}')
 

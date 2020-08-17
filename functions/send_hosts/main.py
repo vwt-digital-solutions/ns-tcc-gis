@@ -23,7 +23,7 @@ def get_access_token():
     return response["token"]
 
 
-def add_feature(x, y, name, hostname, host_groups, layer):
+def add_feature(x, y, attributes, layer):
     adds = [
         {
             "geometry": {
@@ -33,11 +33,7 @@ def add_feature(x, y, name, hostname, host_groups, layer):
                     "wkid": 4326
                 }
             },
-            "attributes": {
-                "name": name,
-                "hostname": hostname,
-                "host_groups": host_groups
-            }
+            "attributes": attributes
         }
     ]
 
@@ -56,20 +52,22 @@ def new_host(data):
 
     for host in data["ns_tcc_hosts"]:
         # Check if host is already posted on ArcGIS
-        unique_id = host["siteName"] + "_" + host["hostName"]
-
-        ref = db.collection(u'hosts').document(unique_id)
+        ref = db.collection(u'hosts').document(host["id"])
         doc = ref.get()
 
         if not doc.exists:
             # If host is not posted then make new feature on ArcGIS and save the ObjectID in the firestore
             try:
+                attributes = {
+                    "name": host["siteName"],
+                    "hostname": host["hostName"],
+                    "host_groups": host["hostGroups"]
+                }
+
                 object_id = add_feature(
                     float(host["longitude"]),
                     float(host["latitude"]),
-                    host["siteName"],
-                    host["hostName"],
-                    [],
+                    attributes,
                     3
                 )
             except (TypeError, ValueError) as e:
@@ -77,13 +75,13 @@ def new_host(data):
                 logging.debug(f'Message: {host}')
                 continue
 
-            logging.info(f'Successfully added {unique_id} as feature with object_id {object_id}')
+            logging.info(f'Successfully added {host["id"]} as feature with object_id {object_id}')
 
             ref.set({
                 u'object_id': object_id,
             })
         else:
-            logging.info(f'Feature with id {unique_id} was already added')
+            logging.info(f'Feature with id {host["id"]} was already added')
 
 
 def main(request):

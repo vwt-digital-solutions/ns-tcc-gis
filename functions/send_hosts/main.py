@@ -130,8 +130,6 @@ def do_host(data):
                     if doc_info[key] != host[key]:
                         attributes[key] = host[key]
 
-                logging.info(f"Changed info is: {attributes}")
-
                 ref.update(
                     attributes
                 )
@@ -144,7 +142,6 @@ def do_host(data):
                     "lifecyclestatus": host["bssLifecycleStatus"]
                 }
                 res = update_feature(doc_info["longitude"], doc_info["latitude"], arcgis_updates, config.LAYER["hosts"])
-                logging.info(res)
 
                 if res[0]["success"]:
                     logging.info(f"Succesfully updated feature with object_id: {doc_info['object_id']}")

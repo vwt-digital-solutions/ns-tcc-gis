@@ -27,8 +27,8 @@ def add_feature(x, y, attributes, layer):
     adds = [
         {
             "geometry": {
-                "x": x,
-                "y": y,
+                "x": float(x),
+                "y": float(y),
                 "spatalReference": {
                     "wkid": 4326
                 }
@@ -37,19 +37,28 @@ def add_feature(x, y, attributes, layer):
         }
     ]
 
+    res = arcgis_feature("adds", adds, layer)
+
+    return res["addResults"][0]["objectId"]
+
+
+def delete_feature(data, layer):
+    res = arcgis_feature("deletes", data, layer)
+
+    return res
+
+
+def arcgis_feature(function, data, layer):
     data = {
-        "adds": str(adds),
+        function: str(data),
         "f": "json",
         "token": get_access_token()
     }
 
-    r = requests.post(config.SERVICE_URL + f"/{layer}/applyEdits", data=data).json()
-
-    return r["addResults"][0]["objectId"]
+    return requests.post(config.SERVICE_URL + f"/{layer}/applyEdits", data=data).json()
 
 
-def new_host(data):
-
+def do_host(data):
     for host in data["ns_tcc_hosts"]:
         # Check if host is already posted on ArcGIS
         ref = db.collection(u'hosts').document(host["id"])
@@ -61,18 +70,21 @@ def new_host(data):
                 attributes = {
                     "name": host["siteName"],
                     "hostname": host["hostName"],
-                    "host_groups": host["hostGroups"]
+                    "host_groups": host["hostGroups"],
+                    "globalcoverage": host["bssGlobalCoverage"],
+                    "hwfamily": host["bssHwFamily"],
+                    "lifecyclestatus": host["bssLifecycleStatus"]
                 }
 
                 object_id = add_feature(
-                    float(host["longitude"]),
-                    float(host["latitude"]),
+                    host["longitude"],
+                    host["latitude"],
                     attributes,
-                    3
+                    config.LAYER["hosts"]
                 )
             except (TypeError, ValueError) as e:
                 logging.error(f'Error when adding feature: {e}')
-                logging.debug(f'Message: {host}')
+                logging.info(f'Message: {host}')
                 continue
 
             logging.info(f'Successfully added {host["id"]} as feature with object_id {object_id}')
@@ -96,7 +108,11 @@ def main(request):
         logging.error(f'Extracting of data failed: {e}')
         return 'Error', 500
 
-    if data:
-        new_host(data)
+    if subscription in config.SUBS["host"]:
+        do_host(data)
+    elif subscription in config.SUBS["host"]:
+        pass
+    else:
+        logging.info(f'Invalid subscription received: {subscription}')
 
     return 'OK', 204

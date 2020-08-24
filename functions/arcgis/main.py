@@ -1,7 +1,9 @@
 import base64
 import json
 import logging
+import zulu
 import requests
+
 import config
 
 from google.cloud import firestore_v1
@@ -39,7 +41,7 @@ def add_feature(x, y, attributes, layer):
 
     res = arcgis_feature("adds", adds, layer)
 
-    return res["addResults"][0]["objectId"]
+    return res["addResults"][0]
 
 
 def update_feature(x, y, attributes, layer):
@@ -55,7 +57,7 @@ def update_feature(x, y, attributes, layer):
 
     res = arcgis_feature("updates", updates, layer)
 
-    return res["updateResults"]
+    return res["updateResults"][0]
 
 
 def delete_feature(object_id, layer):
@@ -65,7 +67,7 @@ def delete_feature(object_id, layer):
 
     res = arcgis_feature("deletes", data, layer)
 
-    return res["deleteResults"]
+    return res["deleteResults"][0]
 
 
 def arcgis_feature(function, data, layer):
@@ -96,7 +98,7 @@ def do_host(data):
                     "lifecyclestatus": host["bssLifecycleStatus"]
                 }
 
-                object_id = add_feature(
+                response = add_feature(
                     host["longitude"],
                     host["latitude"],
                     attributes,
@@ -107,10 +109,10 @@ def do_host(data):
                 logging.info(f"Message: {host}")
                 continue
 
-            logging.info(f"Successfully added '{host['id']}' as feature with object_id: {object_id}")
+            logging.info(f"Successfully added '{host['id']}' as feature with objectId: {response['objectId']}")
 
             ref.set({
-                "object_id": object_id,
+                "objectId": response['objectId'],
                 "siteName": host["siteName"],
                 "hostGroups": host["hostGroups"],
                 "bssGlobalCoverage": host["bssGlobalCoverage"],
@@ -142,7 +144,7 @@ def do_host(data):
                 )
 
                 arcgis_updates = {
-                    "objectid": doc_info["object_id"],
+                    "objectid": doc_info["objectId"],
                     "host_groups": host["hostGroups"],
                     "globalcoverage": host["bssGlobalCoverage"],
                     "hwfamily": host["bssHwFamily"],
@@ -156,76 +158,99 @@ def do_host(data):
                     config.LAYER["hosts"]
                 )
 
-                if res[0]["success"]:
-                    logging.info(f"Succesfully updated feature with object_id: {doc_info['object_id']}")
+                if res["success"]:
+                    logging.info(f"Succesfully updated feature with objectId: {doc_info['objectId']}")
                 else:
-                    logging.info(f"Failed to update feature with object_id: {doc_info['object_id']}")
-                    logging.error(f"Error: {res[0]['error']}")
+                    logging.info(f"Failed to update feature with objectId: {doc_info['objectId']}")
+                    logging.error(f"Error: {res['error']}")
 
 
 def do_event(data):
     for event in data["ns_tcc_events"]:
-        # Make unique identifier
-        unique_id = event["siteName"] + "_" + event["hostName"] + "_" + event["serviceDescription"]
+        try:
+            # Make unique identifier
+            unique_id_host = event["siteName"] + "_" + event["hostName"]
+            unique_id_event = event["siteName"] + "_" + event["hostName"] + "_" + event["serviceDescription"]
 
-        host_ref = db.collection("hosts").document(unique_id)
-        host_doc = host_ref.get()
+            host_ref = db.collection("hosts").document(unique_id_host)
+            host_doc = host_ref.get()
 
-        if not host_doc.exists:
-            logging.error(f"Trying to make event feature but no host info found with id: {unique_id}")
-            continue
+            if not host_doc.exists:
+                logging.error(f"Trying to make event feature but no host info found with id: {unique_id_host}")
+                continue
 
-        host_info = host_doc.to_dict()
+            host_info = host_doc.to_dict()
 
-        # Check if there's already a feature of this event on ArcGIS (firestore)
-        event_ref = db.collection("events").document(unique_id)
-        event_doc = event_ref.get()
+            # Check if there's already a feature of this event on ArcGIS (firestore)
+            event_ref = db.collection("events").document(unique_id_event)
+            event_doc = event_ref.get()
 
-        attributes = {
-            "id": event["id"],
-            "sitename": event["siteName"],
-            "type": event["type"],
-            "hostname": event["hostName"],
-            "servicedescription": event["serviceDescription"],
-            "statetype": event["stateType"],
-            "output": event["output"],
-            "longoutput": event["longOutput"],
-            "eventstate": event["eventState"],
-            "timestamp": event["timestamp"]
-        }
+            converted_time = zulu.parse(event["timestamp"]).timestamp() * 1000
+            attributes = {
+                "id": event["id"],
+                "sitename": event["siteName"],
+                "type": event["type"],
+                "hostname": event["hostName"],
+                "servicedescription": event["serviceDescription"],
+                "statetype": event["stateType"],
+                "output": event["output"],
+                "longoutput": event["longOutput"],
+                "eventstate": event["eventState"],
+                "timestamp": converted_time
+            }
 
-        if event_doc.exists:
-            # There is already a feature. Check if statetype changed and delete and recreate feature if needed.
-            if event["stateType"] != event_doc["stateType"]:
-                # Statetype isn't the same so old feature has to be deleted and new feature has to be created.
-                delete_feature(event_doc["object_id"], config.LAYER[event_doc["stateType"]])
+            if event_doc.exists:
+                # There is already a feature. Check if statetype changed and delete and recreate feature if needed.
+                logging.info(f"Event with id: {unique_id_event} already has a feature.")
 
-                object_id = add_feature(
-                    event["longitude"],
-                    event["latitude"],
+                event_info = event_doc.to_dict()
+
+                if event["stateType"] != event_info["stateType"]:
+                    # Statetype isn't the same so old feature has to be deleted and new feature has to be created.
+                    delete_response = delete_feature(event_info["objectId"], config.LAYER[event_info["stateType"]])
+
+                    if delete_response["success"]:
+                        response = add_feature(
+                            host_info["longitude"],
+                            host_info["latitude"],
+                            attributes,
+                            config.LAYER[event["stateType"]]
+                        )
+
+                        if response["success"]:
+                            # Update firestore with the new values of the attributes
+                            event_ref.update({
+                                "objectId": response["objectId"],
+                                "stateType": event["stateType"]
+                            })
+
+                            logging.info(f"Feature '{unique_id_event}'with objectId: {response['objectId']} updated.")
+                        else:
+                            logging.error(f"Failed changing event feature: {response['error']}")
+                    else:
+                        logging.error(f"Failed deleting event feature: {delete_response['error']}")
+            else:
+                # There is no feature yet so create new feature and add information to firestore
+                response = add_feature(
+                    host_info["longitude"],
+                    host_info["latitude"],
                     attributes,
                     config.LAYER[event["stateType"]]
                 )
 
-                # Update firestore with the new values of the attributes
-                event_ref.update({
-                    "object_id": object_id,
-                    "stateType": event["stateType"]
-                })
-        else:
-            # There is no feature yet so create new feature and add information to firestore
-            object_id = add_feature(
-                host_info["longitude"],
-                host_info["latitude"],
-                attributes,
-                config.LAYER[event["stateType"]]
-            )
+                if response["success"]:
+                    event_ref.set({
+                        "event_id": event["id"],
+                        "objectId": response["objectId"],
+                        "stateType": event["stateType"]
+                    })
 
-            event_ref.set({
-                "event_id": event["id"],
-                "object_id": object_id,
-                "stateType": event["stateType"]
-            })
+                    logging.info(
+                        f"Added new feature of event '{unique_id_event}' with objectId: {response['objectId']}")
+                else:
+                    logging.error(f"Failed adding new event feature: {response['error']}")
+        except Exception as e:
+            logging.error(f"Error when processing event: {e}")
 
 
 def main(request):
@@ -242,7 +267,7 @@ def main(request):
 
     if subscription in config.SUBS["host"]:
         do_host(data)
-    elif subscription in config.SUBS["host"]:
+    elif subscription in config.SUBS["event"]:
         do_event(data)
     else:
         logging.info(f"Invalid subscription received: {subscription}")

@@ -1,0 +1,3 @@
+functions/arcgis/.gcloudignore
+functions/arcgis/config.py
+functions/arcgis/service_account.json

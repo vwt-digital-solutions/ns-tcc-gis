@@ -82,87 +82,107 @@ def arcgis_feature(function, data, layer):
 
 def do_host(data):
     for host in data["ns_tcc_hosts"]:
-        # Check if host is already posted on ArcGIS
-        ref = db.collection("hosts").document(host["id"])
-        doc = ref.get()
+        try:
+            # Check if host is already posted on ArcGIS
+            ref = db.collection("hosts").document(host["id"])
+            doc = ref.get()
 
-        if not doc.exists:
-            # If host is not posted then make new feature on ArcGIS and save the ObjectID in the firestore
-            try:
-                attributes = {
-                    "name": host["siteName"],
-                    "hostname": host["hostName"],
-                    "host_groups": host["hostGroups"],
-                    "globalcoverage": host["bssGlobalCoverage"],
-                    "hwfamily": host["bssHwFamily"],
-                    "lifecyclestatus": host["bssLifecycleStatus"]
-                }
+            # Check if host is decommissioned and then delete
+            if host["decommissioned"]:
+                db.collection("hosts").document(host["id"]).delete()
 
-                response = add_feature(
-                    host["longitude"],
-                    host["latitude"],
-                    attributes,
-                    config.LAYER["hosts"]
-                )
-            except (TypeError, ValueError) as e:
-                logging.error(f"Error when adding feature: {e}")
-                logging.info(f"Message: {host}")
+                if doc.exists:
+                    response = delete_feature(
+                        doc.to_dict()["objectId"],
+                        config.LAYER["hosts"]
+                    )
+
+                    if response["success"]:
+                        logging.info(f"Successfully deleted decommissioned host: {host['id']}")
+                    else:
+                        logging.error(f"Failed deleting decommissioned host: {response['error']}")
+
                 continue
 
-            logging.info(f"Successfully added '{host['id']}' as feature with objectId: {response['objectId']}")
+            if not doc.exists:
+                # If host is not posted then make new feature on ArcGIS and save the ObjectID in the firestore
+                try:
+                    attributes = {
+                        "name": host["siteName"],
+                        "hostname": host["hostName"],
+                        "host_groups": host["hostGroups"],
+                        "globalcoverage": host["bssGlobalCoverage"],
+                        "hwfamily": host["bssHwFamily"],
+                        "lifecyclestatus": host["bssLifecycleStatus"]
+                    }
 
-            ref.set({
-                "objectId": response['objectId'],
-                "siteName": host["siteName"],
-                "hostGroups": host["hostGroups"],
-                "bssGlobalCoverage": host["bssGlobalCoverage"],
-                "bssHwFamily": host["bssHwFamily"],
-                "bssLifecycleStatus": host["bssLifecycleStatus"],
-                "longitude": host["longitude"],
-                "latitude": host["latitude"]
-            })
-        else:
-            # Document exists so check if info from document and host data is the same
-            doc_info = doc.to_dict()
-            keys = ["hostGroups", "bssGlobalCoverage", "bssHwFamily", "bssLifecycleStatus"]
+                    response = add_feature(
+                        host["longitude"],
+                        host["latitude"],
+                        attributes,
+                        config.LAYER["hosts"]
+                    )
+                except (TypeError, ValueError) as e:
+                    logging.error(f"Error when adding feature: {e}")
+                    logging.info(f"Message: {host}")
+                    continue
 
-            doc_info_parsed = {k: doc_info[k] for k in keys}
-            host_parsed = {k: host[k] for k in keys}
+                logging.info(f"Successfully added '{host['id']}' as feature with objectId: {response['objectId']}")
 
-            if doc_info_parsed == host_parsed:
-                # Both items are the same thus the feature doesn't have to be updated.
-                logging.info(f"Feature with id {host['id']} was already added")
+                ref.set({
+                    "objectId": response['objectId'],
+                    "siteName": host["siteName"],
+                    "hostGroups": host["hostGroups"],
+                    "bssGlobalCoverage": host["bssGlobalCoverage"],
+                    "bssHwFamily": host["bssHwFamily"],
+                    "bssLifecycleStatus": host["bssLifecycleStatus"],
+                    "longitude": host["longitude"],
+                    "latitude": host["latitude"]
+                })
             else:
-                # The data is not the same so the feature has to be updated.
-                attributes = {}
-                for key in keys:
-                    if doc_info[key] != host[key]:
-                        attributes[key] = host[key]
+                # Document exists so check if info from document and host data is the same
+                doc_info = doc.to_dict()
+                keys = ["hostGroups", "bssGlobalCoverage", "bssHwFamily", "bssLifecycleStatus"]
 
-                ref.update(
-                    attributes
-                )
+                doc_info_parsed = {k: doc_info[k] for k in keys}
+                host_parsed = {k: host[k] for k in keys}
 
-                arcgis_updates = {
-                    "objectid": doc_info["objectId"],
-                    "host_groups": host["hostGroups"],
-                    "globalcoverage": host["bssGlobalCoverage"],
-                    "hwfamily": host["bssHwFamily"],
-                    "lifecyclestatus": host["bssLifecycleStatus"]
-                }
-
-                res = update_feature(
-                    doc_info["longitude"],
-                    doc_info["latitude"],
-                    arcgis_updates,
-                    config.LAYER["hosts"]
-                )
-
-                if res["success"]:
-                    logging.info(f"Succesfully updated feature with objectId: {doc_info['objectId']}")
+                if doc_info_parsed == host_parsed:
+                    # Both items are the same thus the feature doesn't have to be updated.
+                    logging.info(f"Host with id {host['id']} was already added")
                 else:
-                    logging.info(f"Failed to update feature with objectId: {doc_info['objectId']}")
-                    logging.error(f"Error: {res['error']}")
+                    # The data is not the same so the feature has to be updated.
+                    attributes = {}
+                    for key in keys:
+                        if doc_info[key] != host[key]:
+                            attributes[key] = host[key]
+
+                    ref.update(
+                        attributes
+                    )
+
+                    arcgis_updates = {
+                        "objectid": doc_info["objectId"],
+                        "host_groups": host["hostGroups"],
+                        "globalcoverage": host["bssGlobalCoverage"],
+                        "hwfamily": host["bssHwFamily"],
+                        "lifecyclestatus": host["bssLifecycleStatus"]
+                    }
+
+                    res = update_feature(
+                        doc_info["longitude"],
+                        doc_info["latitude"],
+                        arcgis_updates,
+                        config.LAYER["hosts"]
+                    )
+
+                    if res["success"]:
+                        logging.info(f"Successfully updated feature with objectId: {doc_info['objectId']}")
+                    else:
+                        logging.info(f"Failed to update feature with objectId: {doc_info['objectId']}")
+                        logging.error(f"Error: {res['error']}")
+        except Exception as e:
+            logging.error(f"Error while processing host '{host['id']}': {e}")
 
 
 def do_event(data):

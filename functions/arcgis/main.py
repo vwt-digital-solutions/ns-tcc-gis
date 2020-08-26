@@ -102,6 +102,26 @@ def do_host(data):
                     else:
                         logging.error(f"Failed deleting decommissioned host: {response['error']}")
 
+                # Check for the events created by this host
+                event_docs = db.collection("events")\
+                    .where("sitename", "==", host["siteName"])\
+                    .where("hostname", "==", host["hostName"])\
+                    .stream()
+
+                for doc in event_docs:
+                    event = doc.to_dict()
+
+                    response = delete_feature(
+                        event["objectId"],
+                        config.LAYER[event["statetype"]]
+                    )
+
+                    if response["success"]:
+                        doc.reference.delete()
+                        logging.info(f"Successfully deleted event of decommissioned host with eventId: {doc.id}")
+                    else:
+                        logging.error(f"Failed to delete event of decommissioned host: {response['error']}")
+
                 continue
 
             if not doc.exists:
@@ -221,8 +241,6 @@ def do_event(data):
 
             if event_doc.exists:
                 # There is already a feature. Check if statetype changed and delete and recreate feature if needed.
-                logging.info(f"Event with id: {unique_id_event} already has a feature.")
-
                 event_info = event_doc.to_dict()
 
                 if event["stateType"] != event_info["stateType"]:
@@ -248,6 +266,8 @@ def do_event(data):
                             logging.error(f"Failed changing event feature: {response['error']}")
                     else:
                         logging.error(f"Failed deleting event feature: {delete_response['error']}")
+                else:
+                    logging.info(f"Event with id: '{unique_id_event}' already has a feature and is unchanged.")
             else:
                 # There is no feature yet so create new feature and add information to firestore
                 response = add_feature(
@@ -273,8 +293,8 @@ def do_event(data):
 def main(request):
     try:
         envelope = json.loads(request.data.decode("utf-8"))
-        bytes = base64.b64decode(envelope["message"]["data"])
-        data = json.loads(bytes)
+        decoded = base64.b64decode(envelope["message"]["data"])
+        data = json.loads(decoded)
         subscription = envelope["subscription"].split('/')[-1]
 
         logging.info(f"Read message from subscription {subscription}")

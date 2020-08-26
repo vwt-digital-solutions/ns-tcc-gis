@@ -239,10 +239,9 @@ def do_event(data):
 
                         if response["success"]:
                             # Update firestore with the new values of the attributes
-                            event_ref.update({
-                                "objectId": response["objectId"],
-                                "stateType": event["stateType"]
-                            })
+                            attributes["timestamp"] = event["timestamp"]
+                            attributes["objectId"] = response["objectId"]
+                            event_ref.update(attributes)
 
                             logging.info(f"Feature '{unique_id_event}'with objectId: {response['objectId']} updated.")
                         else:
@@ -259,11 +258,9 @@ def do_event(data):
                 )
 
                 if response["success"]:
-                    event_ref.set({
-                        "event_id": event["id"],
-                        "objectId": response["objectId"],
-                        "stateType": event["stateType"]
-                    })
+                    attributes["timestamp"] = event["timestamp"]
+                    attributes["objectId"] = response["objectId"]
+                    event_ref.set(attributes)
 
                     logging.info(
                         f"Added new feature of event '{unique_id_event}' with objectId: {response['objectId']}")

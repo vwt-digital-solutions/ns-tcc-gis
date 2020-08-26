@@ -1,5 +1,4 @@
 CLIENT_USERNAME = ""  # Username used for OAuth
-CLIENT_PASSWORD = ""  # Password used for OAuth
 CLIENT_REFERER = ""  # Referer used for OAuth
 
 OAUTH_URL = ""  # Url used for OAuth

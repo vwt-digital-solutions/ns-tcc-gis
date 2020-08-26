@@ -3,19 +3,32 @@ import json
 import logging
 import zulu
 import requests
+import os
 
 import config
 
 from google.cloud import firestore_v1
+from google.cloud import secretmanager_v1
 
 db = firestore_v1.Client()
 
 
 def get_access_token():
+    secret_client = secretmanager_v1.SecretManagerServiceClient()
+
+    secret_name = secret_client.secret_version_path(
+        os.environ["PROJECT_ID"],
+        os.environ["SECRET_NAME"],
+        "latest"
+    )
+
+    response = secret_client.access_secret_version(secret_name)
+    secret = response.payload.data.decode("UTF-8")
+
     data = {
         "f": "json",
         "username": config.CLIENT_USERNAME,
-        "password": config.CLIENT_PASSWORD,
+        "password": secret,
         "request": "gettoken",
         "referer": config.CLIENT_REFERER
     }

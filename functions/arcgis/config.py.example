@@ -1,0 +1,19 @@
+CLIENT_USERNAME = ""  # Username used for OAuth
+CLIENT_REFERER = ""  # Referer used for OAuth
+
+OAUTH_URL = ""  # Url used for OAuth
+SERVICE_URL = ""  # ArcGIS REST API url
+
+# Add the name of the subscription
+SUBS = {
+    "host": [""],
+    "event": [""]
+}
+
+# Add the layer of each statetype
+LAYER = {
+    "CRITICAL": 0,
+    "OK": 1,
+    "HARD": 2,
+    "hosts": 3
+}

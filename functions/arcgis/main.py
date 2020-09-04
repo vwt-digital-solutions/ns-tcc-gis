@@ -100,20 +100,30 @@ def do_host(data):
             ref = db.collection("hosts").document(host["id"])
             doc = ref.get()
 
-            # Check if host is decommissioned and then delete
+            # Check if host is decommissioned and then update
             if host["decommissioned"]:
-                db.collection("hosts").document(host["id"]).delete()
-
                 if doc.exists:
-                    response = delete_feature(
-                        doc.to_dict()["objectId"],
+                    ref.set({
+                        "endtime": host["timestamp"]
+                    }, merge=True)
+
+                    arcgis_updates = {
+                        "objectid": doc.to_dict()["objectId"],
+                        "endtime": zulu.parse(host["timestamp"]).timestamp() * 1000
+                    }
+
+                    response = update_feature(
+                        doc.to_dict()["longitude"],
+                        doc.to_dict()["latitude"],
+                        arcgis_updates,
                         config.LAYER["hosts"]
                     )
 
                     if response["success"]:
-                        logging.info(f"Successfully deleted decommissioned host: {host['id']}")
+                        logging.info(f"Successfully updated decommissioned host: {host['id']}")
                     else:
-                        logging.error(f"Failed deleting decommissioned host: {response['error']}")
+                        logging.error(f"Failed updating decommissioned host: {response['error']}")
+                        continue
 
                 # Check for the events created by this host
                 event_docs = db.collection("events")\
@@ -121,19 +131,26 @@ def do_host(data):
                     .where("hostname", "==", host["hostName"])\
                     .stream()
 
-                for doc in event_docs:
-                    event = doc.to_dict()
+                for event_doc in event_docs:
+                    event = event_doc.to_dict()
 
-                    response = delete_feature(
-                        event["objectId"],
-                        config.LAYER[event["statetype"]]
+                    arcgis_updates = {
+                        "objectid": event["objectId"],
+                        "endtime": zulu.parse(host["timestamp"]).timestamp() * 1000
+                    }
+
+                    response = update_feature(
+                        doc.to_dict()["longitude"],
+                        doc.to_dict()["latitude"],
+                        arcgis_updates,
+                        config.LAYER[event["stateType"]]
                     )
 
                     if response["success"]:
                         doc.reference.delete()
                         logging.info(f"Successfully deleted event of decommissioned host with eventId: {doc.id}")
                     else:
-                        logging.error(f"Failed to delete event of decommissioned host: {response['error']}")
+                        logging.error(f"Failed to update event of decommissioned host: {response['error']}")
 
                 continue
 
@@ -146,7 +163,8 @@ def do_host(data):
                         "hostgroups": host["hostGroups"],
                         "bssglobalcoverage": host["bssGlobalCoverage"],
                         "bsshwfamily": host["bssHwFamily"],
-                        "bsslifecyclestatus": host["bssLifecycleStatus"]
+                        "bsslifecyclestatus": host["bssLifecycleStatus"],
+                        "starttime": zulu.parse(host["timestamp"]).timestamp() * 1000
                     }
 
                     response = add_feature(
@@ -170,7 +188,8 @@ def do_host(data):
                     "bssHwFamily": host["bssHwFamily"],
                     "bssLifecycleStatus": host["bssLifecycleStatus"],
                     "longitude": host["longitude"],
-                    "latitude": host["latitude"]
+                    "latitude": host["latitude"],
+                    "starttime": host["timestamp"]
                 })
             else:
                 # Document exists so check if info from document and host data is the same
@@ -249,7 +268,8 @@ def do_event(data):
                 "output": event["output"],
                 "longoutput": event["longOutput"],
                 "eventstate": event["eventState"],
-                "timestamp": converted_time
+                "timestamp": converted_time,
+                "starttime": converted_time
             }
 
             if event_doc.exists:

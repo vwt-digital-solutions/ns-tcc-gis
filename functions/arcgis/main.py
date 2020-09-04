@@ -1,9 +1,6 @@
 import base64
 import json
 import logging
-import sys
-import traceback
-
 import zulu
 import requests
 import os
@@ -340,7 +337,6 @@ def do_event(data):
                     logging.error(f"Failed adding new event feature: {response['error']}")
         except Exception as e:
             logging.error(f"Error when processing event: {e}")
-            logging.info(traceback.print_exc(file=sys.stdout))
 
 
 def main(request):

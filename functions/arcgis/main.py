@@ -1,6 +1,9 @@
 import base64
 import json
 import logging
+import sys
+import traceback
+
 import zulu
 import requests
 import os
@@ -129,6 +132,7 @@ def do_host(data):
                 event_docs = db.collection("events")\
                     .where("sitename", "==", host["siteName"])\
                     .where("hostname", "==", host["hostName"])\
+                    .where("active", "==", True)\
                     .stream()
 
                 for event_doc in event_docs:
@@ -147,8 +151,11 @@ def do_host(data):
                     )
 
                     if response["success"]:
-                        doc.reference.delete()
-                        logging.info(f"Successfully deleted event of decommissioned host with eventId: {doc.id}")
+                        event_doc.reference.set({
+                            "endtime": host["timestamp"],
+                            "active": False
+                        }, merge=True)
+                        logging.info(f"Successfully updated event of decommissioned host with eventId: {doc.id}")
                     else:
                         logging.error(f"Failed to update event of decommissioned host: {response['error']}")
 
@@ -276,11 +283,21 @@ def do_event(data):
                 # There is already a feature. Check if statetype changed and delete and recreate feature if needed.
                 event_info = event_doc.to_dict()
 
-                if event["stateType"] != event_info["stateType"]:
+                if event["stateType"] != event_info["statetype"]:
                     # Statetype isn't the same so old feature has to be deleted and new feature has to be created.
-                    delete_response = delete_feature(event_info["objectId"], config.LAYER[event_info["stateType"]])
+                    arcgis_updates = {
+                        "objectid": event_info["objectId"],
+                        "endtime": zulu.parse(event["timestamp"]).timestamp() * 1000
+                    }
 
-                    if delete_response["success"]:
+                    update_response = update_feature(
+                        host_info["longitude"],
+                        host_info["latitude"],
+                        arcgis_updates,
+                        config.LAYER[event_info["statetype"]]
+                    )
+
+                    if update_response["success"]:
                         response = add_feature(
                             host_info["longitude"],
                             host_info["latitude"],
@@ -292,13 +309,14 @@ def do_event(data):
                             # Update firestore with the new values of the attributes
                             attributes["timestamp"] = event["timestamp"]
                             attributes["objectId"] = response["objectId"]
+                            attributes["active"] = False
                             event_ref.update(attributes)
 
                             logging.info(f"Feature '{unique_id_event}'with objectId: {response['objectId']} updated.")
                         else:
                             logging.error(f"Failed changing event feature: {response['error']}")
                     else:
-                        logging.error(f"Failed deleting event feature: {delete_response['error']}")
+                        logging.error(f"Failed deleting event feature: {update_response['error']}")
                 else:
                     logging.info(f"Event with id: '{unique_id_event}' already has a feature and is unchanged.")
             else:
@@ -313,6 +331,7 @@ def do_event(data):
                 if response["success"]:
                     attributes["timestamp"] = event["timestamp"]
                     attributes["objectId"] = response["objectId"]
+                    attributes["active"] = True
                     event_ref.set(attributes)
 
                     logging.info(
@@ -321,6 +340,7 @@ def do_event(data):
                     logging.error(f"Failed adding new event feature: {response['error']}")
         except Exception as e:
             logging.error(f"Error when processing event: {e}")
+            logging.info(traceback.print_exc(file=sys.stdout))
 
 
 def main(request):

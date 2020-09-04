@@ -15,5 +15,6 @@ LAYER = {
     "CRITICAL": 0,
     "OK": 1,
     "HARD": 2,
-    "hosts": 3
+    "WARNING": 3,
+    "hosts": 4
 }

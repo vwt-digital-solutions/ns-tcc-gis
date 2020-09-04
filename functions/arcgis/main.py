@@ -141,12 +141,12 @@ def do_host(data):
                 # If host is not posted then make new feature on ArcGIS and save the ObjectID in the firestore
                 try:
                     attributes = {
-                        "name": host["siteName"],
+                        "sitename": host["siteName"],
                         "hostname": host["hostName"],
-                        "host_groups": host["hostGroups"],
-                        "globalcoverage": host["bssGlobalCoverage"],
-                        "hwfamily": host["bssHwFamily"],
-                        "lifecyclestatus": host["bssLifecycleStatus"]
+                        "hostgroups": host["hostGroups"],
+                        "bssglobalcoverage": host["bssGlobalCoverage"],
+                        "bsshwfamily": host["bssHwFamily"],
+                        "bsslifecyclestatus": host["bssLifecycleStatus"]
                     }
 
                     response = add_feature(
@@ -315,9 +315,9 @@ def main(request):
         logging.error(f"Extracting of data failed: {e}")
         return "Error", 500
 
-    if subscription in config.SUBS["host"]:
+    if subscription == config.SUBS["host"]:
         do_host(data)
-    elif subscription in config.SUBS["event"]:
+    elif subscription == config.SUBS["event"]:
         do_event(data)
     else:
         logging.info(f"Invalid subscription received: {subscription}")

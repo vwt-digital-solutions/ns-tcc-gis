@@ -129,7 +129,6 @@ def do_host(data):
                 event_docs = db.collection("events")\
                     .where("sitename", "==", host["siteName"])\
                     .where("hostname", "==", host["hostName"])\
-                    .where("active", "==", True)\
                     .stream()
 
                 for event_doc in event_docs:
@@ -306,7 +305,6 @@ def do_event(data):
                             # Update firestore with the new values of the attributes
                             attributes["timestamp"] = event["timestamp"]
                             attributes["objectId"] = response["objectId"]
-                            attributes["active"] = False
                             event_ref.update(attributes)
 
                             logging.info(f"Feature '{unique_id_event}'with objectId: {response['objectId']} updated.")
@@ -328,7 +326,6 @@ def do_event(data):
                 if response["success"]:
                     attributes["timestamp"] = event["timestamp"]
                     attributes["objectId"] = response["objectId"]
-                    attributes["active"] = True
                     event_ref.set(attributes)
 
                     logging.info(

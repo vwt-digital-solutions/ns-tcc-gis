@@ -100,20 +100,30 @@ def do_host(data):
             ref = db.collection("hosts").document(host["id"])
             doc = ref.get()
 
-            # Check if host is decommissioned and then delete
+            # Check if host is decommissioned and then update
             if host["decommissioned"]:
-                db.collection("hosts").document(host["id"]).delete()
-
                 if doc.exists:
-                    response = delete_feature(
-                        doc.to_dict()["objectId"],
+                    ref.set({
+                        "endtime": host["timestamp"]
+                    }, merge=True)
+
+                    arcgis_updates = {
+                        "objectid": doc.to_dict()["objectId"],
+                        "endtime": zulu.parse(host["timestamp"]).timestamp() * 1000
+                    }
+
+                    response = update_feature(
+                        doc.to_dict()["longitude"],
+                        doc.to_dict()["latitude"],
+                        arcgis_updates,
                         config.LAYER["hosts"]
                     )
 
                     if response["success"]:
-                        logging.info(f"Successfully deleted decommissioned host: {host['id']}")
+                        logging.info(f"Successfully updated decommissioned host: {host['id']}")
                     else:
-                        logging.error(f"Failed deleting decommissioned host: {response['error']}")
+                        logging.error(f"Failed updating decommissioned host: {response['error']}")
+                        continue
 
                 # Check for the events created by this host
                 event_docs = db.collection("events")\
@@ -121,19 +131,28 @@ def do_host(data):
                     .where("hostname", "==", host["hostName"])\
                     .stream()
 
-                for doc in event_docs:
-                    event = doc.to_dict()
+                for event_doc in event_docs:
+                    event = event_doc.to_dict()
 
-                    response = delete_feature(
-                        event["objectId"],
-                        config.LAYER[event["statetype"]]
+                    arcgis_updates = {
+                        "objectid": event["objectId"],
+                        "endtime": zulu.parse(host["timestamp"]).timestamp() * 1000
+                    }
+
+                    response = update_feature(
+                        doc.to_dict()["longitude"],
+                        doc.to_dict()["latitude"],
+                        arcgis_updates,
+                        config.LAYER[event["stateType"]]
                     )
 
                     if response["success"]:
-                        doc.reference.delete()
-                        logging.info(f"Successfully deleted event of decommissioned host with eventId: {doc.id}")
+                        event_doc.reference.set({
+                            "endtime": host["timestamp"]
+                        }, merge=True)
+                        logging.info(f"Successfully updated event of decommissioned host with eventId: {doc.id}")
                     else:
-                        logging.error(f"Failed to delete event of decommissioned host: {response['error']}")
+                        logging.error(f"Failed to update event of decommissioned host: {response['error']}")
 
                 continue
 
@@ -141,12 +160,13 @@ def do_host(data):
                 # If host is not posted then make new feature on ArcGIS and save the ObjectID in the firestore
                 try:
                     attributes = {
-                        "name": host["siteName"],
+                        "sitename": host["siteName"],
                         "hostname": host["hostName"],
-                        "host_groups": host["hostGroups"],
-                        "globalcoverage": host["bssGlobalCoverage"],
-                        "hwfamily": host["bssHwFamily"],
-                        "lifecyclestatus": host["bssLifecycleStatus"]
+                        "hostgroups": host["hostGroups"],
+                        "bssglobalcoverage": host["bssGlobalCoverage"],
+                        "bsshwfamily": host["bssHwFamily"],
+                        "bsslifecyclestatus": host["bssLifecycleStatus"],
+                        "starttime": zulu.parse(host["timestamp"]).timestamp() * 1000
                     }
 
                     response = add_feature(
@@ -170,7 +190,8 @@ def do_host(data):
                     "bssHwFamily": host["bssHwFamily"],
                     "bssLifecycleStatus": host["bssLifecycleStatus"],
                     "longitude": host["longitude"],
-                    "latitude": host["latitude"]
+                    "latitude": host["latitude"],
+                    "starttime": host["timestamp"]
                 })
             else:
                 # Document exists so check if info from document and host data is the same
@@ -249,18 +270,29 @@ def do_event(data):
                 "output": event["output"],
                 "longoutput": event["longOutput"],
                 "eventstate": event["eventState"],
-                "timestamp": converted_time
+                "timestamp": converted_time,
+                "starttime": converted_time
             }
 
             if event_doc.exists:
                 # There is already a feature. Check if statetype changed and delete and recreate feature if needed.
                 event_info = event_doc.to_dict()
 
-                if event["stateType"] != event_info["stateType"]:
+                if event["stateType"] != event_info["statetype"]:
                     # Statetype isn't the same so old feature has to be deleted and new feature has to be created.
-                    delete_response = delete_feature(event_info["objectId"], config.LAYER[event_info["stateType"]])
+                    arcgis_updates = {
+                        "objectid": event_info["objectId"],
+                        "endtime": zulu.parse(event["timestamp"]).timestamp() * 1000
+                    }
 
-                    if delete_response["success"]:
+                    update_response = update_feature(
+                        host_info["longitude"],
+                        host_info["latitude"],
+                        arcgis_updates,
+                        config.LAYER[event_info["statetype"]]
+                    )
+
+                    if update_response["success"]:
                         response = add_feature(
                             host_info["longitude"],
                             host_info["latitude"],
@@ -278,7 +310,7 @@ def do_event(data):
                         else:
                             logging.error(f"Failed changing event feature: {response['error']}")
                     else:
-                        logging.error(f"Failed deleting event feature: {delete_response['error']}")
+                        logging.error(f"Failed deleting event feature: {update_response['error']}")
                 else:
                     logging.info(f"Event with id: '{unique_id_event}' already has a feature and is unchanged.")
             else:
@@ -315,9 +347,9 @@ def main(request):
         logging.error(f"Extracting of data failed: {e}")
         return "Error", 500
 
-    if subscription in config.SUBS["host"]:
+    if subscription == config.SUBS["host"]:
         do_host(data)
-    elif subscription in config.SUBS["event"]:
+    elif subscription == config.SUBS["event"]:
         do_event(data)
     else:
         logging.info(f"Invalid subscription received: {subscription}")

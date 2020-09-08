@@ -148,8 +148,7 @@ def do_host(data):
 
                     if response["success"]:
                         event_doc.reference.set({
-                            "endtime": host["timestamp"],
-                            "active": False
+                            "endtime": host["timestamp"]
                         }, merge=True)
                         logging.info(f"Successfully updated event of decommissioned host with eventId: {doc.id}")
                     else:

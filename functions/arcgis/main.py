@@ -97,66 +97,10 @@ def do_host(data):
     for host in data["ns_tcc_hosts"]:
         try:
             # Check if host is already posted on ArcGIS
-            ref = db.collection("hosts").document(host["id"])
-            doc = ref.get()
+            host_ref = db.collection("hosts").document(host["id"])
+            host_doc = host_ref.get()
 
-            # Check if host is decommissioned and then update
-            if host["decommissioned"]:
-                if doc.exists:
-                    ref.set({
-                        "endtime": host["timestamp"]
-                    }, merge=True)
-
-                    arcgis_updates = {
-                        "objectid": doc.to_dict()["objectId"],
-                        "endtime": zulu.parse(host["timestamp"]).timestamp() * 1000
-                    }
-
-                    response = update_feature(
-                        doc.to_dict()["longitude"],
-                        doc.to_dict()["latitude"],
-                        arcgis_updates,
-                        config.LAYER["hosts"]
-                    )
-
-                    if response["success"]:
-                        logging.info(f"Successfully updated decommissioned host: {host['id']}")
-                    else:
-                        logging.error(f"Failed updating decommissioned host: {response['error']}")
-                        continue
-
-                # Check for the events created by this host
-                event_docs = db.collection("events")\
-                    .where("sitename", "==", host["siteName"])\
-                    .where("hostname", "==", host["hostName"])\
-                    .stream()
-
-                for event_doc in event_docs:
-                    event = event_doc.to_dict()
-
-                    arcgis_updates = {
-                        "objectid": event["objectId"],
-                        "endtime": zulu.parse(host["timestamp"]).timestamp() * 1000
-                    }
-
-                    response = update_feature(
-                        doc.to_dict()["longitude"],
-                        doc.to_dict()["latitude"],
-                        arcgis_updates,
-                        config.LAYER[event["stateType"]]
-                    )
-
-                    if response["success"]:
-                        event_doc.reference.set({
-                            "endtime": host["timestamp"]
-                        }, merge=True)
-                        logging.info(f"Successfully updated event of decommissioned host with eventId: {doc.id}")
-                    else:
-                        logging.error(f"Failed to update event of decommissioned host: {response['error']}")
-
-                continue
-
-            if not doc.exists:
+            if not host_doc.exists:
                 # If host is not posted then make new feature on ArcGIS and save the ObjectID in the firestore
                 try:
                     attributes = {
@@ -182,7 +126,7 @@ def do_host(data):
 
                 logging.info(f"Successfully added '{host['id']}' as feature with objectId: {response['objectId']}")
 
-                ref.set({
+                host_ref.set({
                     "objectId": response['objectId'],
                     "siteName": host["siteName"],
                     "hostGroups": host["hostGroups"],
@@ -195,48 +139,104 @@ def do_host(data):
                 })
             else:
                 # Document exists so check if info from document and host data is the same
-                doc_info = doc.to_dict()
-                keys = ["hostGroups", "bssGlobalCoverage", "bssHwFamily", "bssLifecycleStatus"]
+                host_info = host_doc.to_dict()
 
-                doc_info_parsed = {k: doc_info[k] for k in keys}
-                host_parsed = {k: host[k] for k in keys}
-
-                if doc_info_parsed == host_parsed:
-                    # Both items are the same thus the feature doesn't have to be updated.
-                    logging.info(f"Host with id {host['id']} was already added")
-                else:
-                    # The data is not the same so the feature has to be updated.
-                    attributes = {}
-                    for key in keys:
-                        if doc_info[key] != host[key]:
-                            attributes[key] = host[key]
-
-                    ref.update(
-                        attributes
-                    )
+                # Check if host is decommissioned and then update
+                if host["decommissioned"]:
+                    host_ref.set({
+                        "endtime": host["timestamp"]
+                    }, merge=True)
 
                     arcgis_updates = {
-                        "objectid": doc_info["objectId"],
-                        "host_groups": host["hostGroups"],
-                        "globalcoverage": host["bssGlobalCoverage"],
-                        "hwfamily": host["bssHwFamily"],
-                        "lifecyclestatus": host["bssLifecycleStatus"]
+                        "objectid": host_info["objectId"],
+                        "endtime": zulu.parse(host["timestamp"]).timestamp() * 1000
                     }
 
-                    res = update_feature(
-                        doc_info["longitude"],
-                        doc_info["latitude"],
+                    response = update_feature(
+                        host_info["longitude"],
+                        host_info["latitude"],
                         arcgis_updates,
                         config.LAYER["hosts"]
                     )
 
-                    if res["success"]:
-                        logging.info(f"Successfully updated feature with objectId: {doc_info['objectId']}")
+                    if response["success"]:
+                        logging.info(f"Successfully updated decommissioned host: {host['id']}")
                     else:
-                        logging.info(f"Failed to update feature with objectId: {doc_info['objectId']}")
-                        logging.error(f"Error: {res['error']}")
+                        logging.error(f"Failed updating decommissioned host: {response['error']}")
+                        continue
+
+                    # Check for the events created by this host
+                    event_docs = db.collection("events") \
+                        .where("sitename", "==", host["siteName"]) \
+                        .where("hostname", "==", host["hostName"]) \
+                        .stream()
+
+                    for event_doc in event_docs:
+                        event_info = event_doc.to_dict()
+
+                        arcgis_updates = {
+                            "objectid": event_info["objectId"],
+                            "endtime": zulu.parse(host["timestamp"]).timestamp() * 1000
+                        }
+
+                        response = update_feature(
+                            host_info["longitude"],
+                            host_info["latitude"],
+                            arcgis_updates,
+                            config.LAYER[event_info["statetype"]]
+                        )
+
+                        if response["success"]:
+                            event_doc.reference.set({
+                                "endtime": host["timestamp"]
+                            }, merge=True)
+                            logging.info(f"Successfully updated event of decommissioned host with eventId: "
+                                         f"{host_doc.id}")
+                        else:
+                            logging.error(f"Failed to update event of decommissioned host: {response['error']}")
+                    continue
+                else:
+                    keys = ["hostGroups", "bssGlobalCoverage", "bssHwFamily", "bssLifecycleStatus"]
+
+                    doc_info_parsed = {k: host_info[k] for k in keys}
+                    host_parsed = {k: host[k] for k in keys}
+
+                    # Check if hosts are the same and if it's been decommissioned before (endtime)
+                    if doc_info_parsed == host_parsed:
+                        logging.info(f"Host with id {host['id']} was already added")
+                    else:
+                        # The data is not the same so the feature has to be updated.
+                        attributes = {}
+                        for key in keys:
+                            if host_info[key] != host[key]:
+                                attributes[key] = host[key]
+
+                        host_ref.update(
+                            attributes
+                        )
+
+                        arcgis_updates = {
+                            "objectid": host_info["objectId"],
+                            "host_groups": host["hostGroups"],
+                            "globalcoverage": host["bssGlobalCoverage"],
+                            "hwfamily": host["bssHwFamily"],
+                            "lifecyclestatus": host["bssLifecycleStatus"]
+                        }
+
+                        response = update_feature(
+                            host_info["longitude"],
+                            host_info["latitude"],
+                            arcgis_updates,
+                            config.LAYER["hosts"]
+                        )
+
+                        if response["success"]:
+                            logging.info(f"Successfully updated feature with objectId: {host_info['objectId']}")
+                        else:
+                            logging.error(f"Failed to update feature: {response['error']}")
         except Exception as e:
-            logging.error(f"Error while processing host '{host['id']}': {e}")
+            logging.error(f"Error when processing host '{host['id']}': {e}")
+            logging.exception(e)
 
 
 def do_event(data):
@@ -306,7 +306,8 @@ def do_event(data):
                             attributes["objectId"] = response["objectId"]
                             event_ref.update(attributes)
 
-                            logging.info(f"Feature '{unique_id_event}'with objectId: {response['objectId']} updated.")
+                            logging.info(f"Event feature '{unique_id_event}'with objectId: {response['objectId']} "
+                                         f"updated.")
                         else:
                             logging.error(f"Failed changing event feature: {response['error']}")
                     else:

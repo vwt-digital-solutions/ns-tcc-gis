@@ -119,24 +119,27 @@ def do_host(data):
                         attributes,
                         config.LAYER["hosts"]
                     )
-                except (TypeError, ValueError) as e:
-                    logging.error(f"Error when adding feature: {e}")
-                    logging.info(f"Message: {host}")
+
+                except (TypeError, ValueError):
+                    logging.info(f"Invalid host feature data for host: {host}")
                     continue
 
-                logging.info(f"Successfully added '{host['id']}' as feature with objectId: {response['objectId']}")
+                if response["success"]:
+                    logging.info(f"Successfully added '{host['id']}' as feature with objectId: {response['objectId']}")
 
-                host_ref.set({
-                    "objectId": response['objectId'],
-                    "siteName": host["siteName"],
-                    "hostGroups": host["hostGroups"],
-                    "bssGlobalCoverage": host["bssGlobalCoverage"],
-                    "bssHwFamily": host["bssHwFamily"],
-                    "bssLifecycleStatus": host["bssLifecycleStatus"],
-                    "longitude": host["longitude"],
-                    "latitude": host["latitude"],
-                    "starttime": host["timestamp"]
-                })
+                    host_ref.set({
+                        "objectId": response['objectId'],
+                        "siteName": host["siteName"],
+                        "hostGroups": host["hostGroups"],
+                        "bssGlobalCoverage": host["bssGlobalCoverage"],
+                        "bssHwFamily": host["bssHwFamily"],
+                        "bssLifecycleStatus": host["bssLifecycleStatus"],
+                        "longitude": host["longitude"],
+                        "latitude": host["latitude"],
+                        "starttime": host["timestamp"]
+                    })
+                else:
+                    logging.error(f"Error while adding new host: {response['error']}")
             else:
                 # Document exists so check if info from document and host data is the same
                 host_info = host_doc.to_dict()
@@ -333,7 +336,8 @@ def do_event(data):
                 else:
                     logging.error(f"Failed adding new event feature: {response['error']}")
         except Exception as e:
-            logging.error(f"Error when processing event: {e}")
+            logging.error(f"Error when processing event: {event['id']}")
+            logging.exception(e)
 
 
 def main(request):

@@ -113,6 +113,9 @@ def do_host(data):
                         "starttime": zulu.parse(host["timestamp"]).timestamp() * 1000
                     }
 
+                    if host["longitude"] is None or host["latitude"] is None:
+                        raise ValueError
+
                     response = add_feature(
                         host["longitude"],
                         host["latitude"],
@@ -253,7 +256,7 @@ def do_event(data):
             host_doc = host_ref.get()
 
             if not host_doc.exists:
-                logging.error(f"Trying to make event feature but no host info found with id: {unique_id_host}")
+                logging.info(f"Trying to make event feature but no host info found with id: {unique_id_host}")
                 continue
 
             host_info = host_doc.to_dict()
@@ -262,20 +265,24 @@ def do_event(data):
             event_ref = db.collection("events").document(unique_id_event)
             event_doc = event_ref.get()
 
-            converted_time = zulu.parse(event["timestamp"]).timestamp() * 1000
-            attributes = {
-                "id": event["id"],
-                "sitename": event["siteName"],
-                "type": event["type"],
-                "hostname": event["hostName"],
-                "servicedescription": event["serviceDescription"],
-                "statetype": event["stateType"],
-                "output": event["output"],
-                "longoutput": event["longOutput"],
-                "eventstate": event["eventState"],
-                "timestamp": converted_time,
-                "starttime": converted_time
-            }
+            try:
+                converted_time = zulu.parse(event["timestamp"]).timestamp() * 1000
+                attributes = {
+                    "id": event["id"],
+                    "sitename": event["siteName"],
+                    "type": event["type"],
+                    "hostname": event["hostName"],
+                    "servicedescription": event["serviceDescription"],
+                    "statetype": event["stateType"],
+                    "output": event["output"],
+                    "longoutput": event["longOutput"],
+                    "eventstate": event["eventState"],
+                    "timestamp": converted_time,
+                    "starttime": converted_time
+                }
+            except (ValueError, KeyError):
+                logging.info(f"Invalid event feature data for event: {event}")
+                continue
 
             if event_doc.exists:
                 # There is already a feature. Check if statetype changed and delete and recreate feature if needed.

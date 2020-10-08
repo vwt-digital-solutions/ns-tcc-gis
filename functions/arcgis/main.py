@@ -111,6 +111,7 @@ def do_host(data):
                         "bsshwfamily": host["bssHwFamily"],
                         "bsslifecyclestatus": host["bssLifecycleStatus"],
                         "status": 0,  # OK
+                        "giskleur": 0,  # GREEN
                         "type": "HOST",
                         "event_output": "Initial display - NS-TCC-GIS",
                         "starttime": zulu.parse(host["timestamp"]).timestamp() * 1000
@@ -312,6 +313,7 @@ def do_event(data):
                         "bssglobalcoverage": host_info["bssglobalcoverage"],
                         "bsshwfamily": host_info["bsshwfamily"],
                         "bsslifecyclestatus": host_info["bsslifecyclestatus"],
+                        "giskleur": status if event_type == "HOST" else (status + 9),  # For colouring in GIS
                         "status": status,
                         "type": event_type,
                         "event_output": output,

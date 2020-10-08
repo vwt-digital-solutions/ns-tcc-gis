@@ -3,5 +3,6 @@ functions/arcgis/config.py
 functions/arcgis/service_account.json
 /functions/arcgis/test.py
 /functions/arcgis/test2.py
+/functions/arcgis/delete_all_features.py
 .idea/
 functions/arcgis/__pycache__/

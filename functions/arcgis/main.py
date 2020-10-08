@@ -170,12 +170,11 @@ def do_host(data):
                         continue
                     continue
                 else:
-                    keys = ["hostGroups", "bssGlobalCoverage", "bssHwFamily", "bssLifecycleStatus"]
+                    keys = ["hostgroups", "bssglobalcoverage", "bsshwfamily", "bssfifecyclestatus"]
 
                     doc_info_parsed = {k: host_info[k] for k in keys}
                     host_parsed = {k: host[k] for k in keys}
 
-                    # Check if hosts are the same and if it's been decommissioned before (endtime)
                     if doc_info_parsed == host_parsed:
                         logging.info(f"Host with id {host['id']} was already added")
                     else:

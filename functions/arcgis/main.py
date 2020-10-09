@@ -104,12 +104,12 @@ def do_host(data):
                 # If host is not posted then make new feature on ArcGIS and save the ObjectID in the firestore
                 try:
                     attributes = {
-                        "sitename": host["siteName"],
-                        "hostname": host["hostName"],
-                        "hostgroups": host["hostGroups"],
-                        "bssglobalcoverage": host["bssGlobalCoverage"],
-                        "bsshwfamily": host["bssHwFamily"],
-                        "bsslifecyclestatus": host["bssLifecycleStatus"],
+                        "siteName": host["siteName"],
+                        "hostName": host["hostName"],
+                        "hostGroups": host["hostGroups"],
+                        "bssGlobalCoverage": host["bssGlobalCoverage"],
+                        "bssHwFamily": host["bssHwFamily"],
+                        "bssLifecycleStatus": host["bssLifecycleStatus"],
                         "status": 0,  # OK
                         "giskleur": 0,  # GREEN
                         "type": "HOST",
@@ -117,17 +117,22 @@ def do_host(data):
                         "starttime": zulu.parse(host["timestamp"]).timestamp() * 1000
                     }
 
+                    # Make all keys lowercase for ArcGIS
+                    arcgis_attributes = {}
+                    for key in attributes:
+                        arcgis_attributes.update({key.lower(): attributes[key]})
+
                     if host["longitude"] is None or host["latitude"] is None:
                         raise ValueError
 
                     response = add_feature(
                         host["longitude"],
                         host["latitude"],
-                        attributes,
+                        arcgis_attributes,
                         config.LAYER["hosts"]
                     )
 
-                except (TypeError, ValueError):
+                except (TypeError, ValueError, KeyError):
                     logging.info(f"Invalid host feature data for host: {host}")
                     continue
 
@@ -170,7 +175,7 @@ def do_host(data):
                         continue
                     continue
                 else:
-                    keys = ["hostgroups", "bssglobalcoverage", "bsshwfamily", "bssfifecyclestatus"]
+                    keys = ["hostGroups", "bssGlobalCoverage", "bssHwFamily", "bssLifecycleStatus"]
 
                     doc_info_parsed = {k: host_info[k] for k in keys}
                     host_parsed = {k: host[k] for k in keys}
@@ -190,10 +195,10 @@ def do_host(data):
 
                         arcgis_updates = {
                             "objectid": host_info["objectId"],
-                            "host_groups": host["hostGroups"],
-                            "globalcoverage": host["bssGlobalCoverage"],
-                            "hwfamily": host["bssHwFamily"],
-                            "lifecyclestatus": host["bssLifecycleStatus"]
+                            "hostgroups": host["hostGroups"],
+                            "bssglobalcoverage": host["bssGlobalCoverage"],
+                            "bsshwfamily": host["bssHwFamily"],
+                            "bsslifecyclestatus": host["bssLifecycleStatus"]
                         }
 
                         response = update_feature(
@@ -208,8 +213,7 @@ def do_host(data):
                         else:
                             logging.error(f"Failed to update feature: {response['error']}")
         except Exception as e:
-            logging.error(f"Error when processing host '{host['id']}': {e}")
-            logging.exception(e)
+            logging.exception(f"Error when processing host '{host['id']}': {e}")
 
 
 def do_event(data):
@@ -258,7 +262,6 @@ def do_event(data):
                 event_ref.set(attributes)
 
             # Get current "worst" states from all events of host
-
             event_docs = db.collection("events"). \
                 where("sitename", "==", event["siteName"]). \
                 where("hostname", "==", event["hostName"]).stream()
@@ -308,10 +311,10 @@ def do_event(data):
                     attributes = {
                         "sitename": event["siteName"],
                         "hostname": event["hostName"],
-                        "hostgroups": host_info["hostgroups"],
-                        "bssglobalcoverage": host_info["bssglobalcoverage"],
-                        "bsshwfamily": host_info["bsshwfamily"],
-                        "bsslifecyclestatus": host_info["bsslifecyclestatus"],
+                        "hostgroups": host_info["hostGroups"],
+                        "bssglobalcoverage": host_info["bssGlobalCoverage"],
+                        "bsshwfamily": host_info["bssHwFamily"],
+                        "bsslifecyclestatus": host_info["bssLifecycleStatus"],
                         "giskleur": status if event_type == "HOST" else (status + 9),  # For colouring in GIS
                         "status": status,
                         "type": event_type,
@@ -342,8 +345,7 @@ def do_event(data):
             else:
                 logging.info(f"Received event but host feature not updated. No new status for event: {unique_id_event}")
         except Exception as e:
-            logging.error(f"Error when processing event: {event['id']}")
-            logging.exception(e)
+            logging.exception(f"Error when processing event: {event['id']}: {e}")
 
 
 def main(request):

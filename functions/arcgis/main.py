@@ -107,9 +107,9 @@ def do_host(data):
                     "hostname": host["hostname"],
                     "decommissioned": host["decommissioned"],
                     "hostgroups": host["host_groups"],
-                    "bssglobalcoverage": host["bss_global_coverage"],
-                    "bsshwfamily": host["bss_hw_family"],
-                    "bsslifecyclestatus": host["bss_lifecycle_status"],
+                    "bssglobalcoverage": host["bss_global_coverage"]["realvalue"],
+                    "bsshwfamily": host["bss_hw_family"]["realvalue"],
+                    "bsslifecyclestatus": host["bss_lifecycle_status"]["realvalue"],
                     "status": 0,  # OK
                     "giskleur": 0,  # GREEN
                     "type": "HOST",

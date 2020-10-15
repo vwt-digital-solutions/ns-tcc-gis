@@ -100,50 +100,48 @@ def do_host(data):
             host_ref = db.collection("hosts").document(host["id"])
             host_doc = host_ref.get()
 
+            try:
+                host = {
+                    "id": host["id"],
+                    "sitename": host["sitename"],
+                    "hostname": host["hostname"],
+                    "decommissioned": host["decommissioned"],
+                    "hostgroups": host["host_groups"],
+                    "bssglobalcoverage": host["bss_global_coverage"],
+                    "bsshwfamily": host["bss_hw_family"],
+                    "bsslifecyclestatus": host["bss_lifecycle_status"],
+                    "status": 0,  # OK
+                    "giskleur": 0,  # GREEN
+                    "type": "HOST",
+                    "event_output": "Initial display - NS-TCC-GIS",
+                    "starttime": zulu.parse(host["timestamp"]).timestamp() * 1000,
+                    "longitude": host["longitude"],
+                    "latitude": host["latitude"]
+                }
+
+                if host["longitude"] is None or host["latitude"] is None:
+                    raise ValueError
+
+            except (TypeError, ValueError, KeyError):
+                logging.info(f"Invalid host feature data for host: {host}")
+                continue
+
             if not host_doc.exists:
                 # If host is not posted then make new feature on ArcGIS and save the ObjectID in the firestore
-                try:
-                    attributes = {
-                        "siteName": host["siteName"],
-                        "hostName": host["hostName"],
-                        "hostGroups": host["hostGroups"],
-                        "bssGlobalCoverage": host["bssGlobalCoverage"],
-                        "bssHwFamily": host["bssHwFamily"],
-                        "bssLifecycleStatus": host["bssLifecycleStatus"],
-                        "status": 0,  # OK
-                        "giskleur": 0,  # GREEN
-                        "type": "HOST",
-                        "event_output": "Initial display - NS-TCC-GIS",
-                        "starttime": zulu.parse(host["timestamp"]).timestamp() * 1000
-                    }
 
-                    # Make all keys lowercase for ArcGIS
-                    arcgis_attributes = {}
-                    for key in attributes:
-                        arcgis_attributes.update({key.lower(): attributes[key]})
-
-                    if host["longitude"] is None or host["latitude"] is None:
-                        raise ValueError
-
-                    response = add_feature(
-                        host["longitude"],
-                        host["latitude"],
-                        arcgis_attributes,
-                        config.LAYER["hosts"]
-                    )
-
-                except (TypeError, ValueError, KeyError):
-                    logging.info(f"Invalid host feature data for host: {host}")
-                    continue
+                response = add_feature(
+                    host["longitude"],
+                    host["latitude"],
+                    host,
+                    config.LAYER["hosts"]
+                )
 
                 if response["success"]:
                     logging.info(f"Successfully added '{host['id']}' as feature with objectId: {response['objectId']}")
 
-                    attributes["objectId"] = response["objectId"]
-                    attributes["longitude"] = host["longitude"]
-                    attributes["latitude"] = host["latitude"]
+                    host["objectId"] = response["objectId"]
 
-                    host_ref.set(attributes)
+                    host_ref.set(host)
                 else:
                     logging.error(f"Error while adding new host: {response['error']}")
             else:
@@ -175,7 +173,7 @@ def do_host(data):
                         continue
                     continue
                 else:
-                    keys = ["hostGroups", "bssGlobalCoverage", "bssHwFamily", "bssLifecycleStatus"]
+                    keys = ["hostgroups", "bssglobalcoverage", "bsshwfamily", "bsslifecyclestatus"]
 
                     doc_info_parsed = {k: host_info[k] for k in keys}
                     host_parsed = {k: host[k] for k in keys}
@@ -195,10 +193,10 @@ def do_host(data):
 
                         arcgis_updates = {
                             "objectid": host_info["objectId"],
-                            "hostgroups": host["hostGroups"],
-                            "bssglobalcoverage": host["bssGlobalCoverage"],
-                            "bsshwfamily": host["bssHwFamily"],
-                            "bsslifecyclestatus": host["bssLifecycleStatus"]
+                            "hostgroups": host["hostgroups"],
+                            "bssglobalcoverage": host["bssglobalcoverage"],
+                            "bsshwfamily": host["bsshwfamily"],
+                            "bsslifecyclestatus": host["bsslifecyclestatus"]
                         }
 
                         response = update_feature(
@@ -311,10 +309,10 @@ def do_event(data):
                     attributes = {
                         "sitename": event["siteName"],
                         "hostname": event["hostName"],
-                        "hostgroups": host_info["hostGroups"],
-                        "bssglobalcoverage": host_info["bssGlobalCoverage"],
-                        "bsshwfamily": host_info["bssHwFamily"],
-                        "bsslifecyclestatus": host_info["bssLifecycleStatus"],
+                        "hostgroups": host_info["hostgroups"],
+                        "bssglobalcoverage": host_info["bssglobalcoverage"],
+                        "bsshwfamily": host_info["bsshwfamily"],
+                        "bsslifecyclestatus": host_info["bsslifecyclestatus"],
                         "giskleur": status if event_type == "HOST" else (status + 9),  # For colouring in GIS
                         "status": status,
                         "type": event_type,

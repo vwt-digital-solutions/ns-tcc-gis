@@ -100,45 +100,48 @@ def do_host(data):
             host_ref = db.collection("hosts").document(host["id"])
             host_doc = host_ref.get()
 
+            try:
+                host = {
+                    "id": host["id"],
+                    "sitename": host["sitename"],
+                    "hostname": host["hostname"],
+                    "decommissioned": host["decommissioned"],
+                    "hostgroups": host["host_groups"],
+                    "bssglobalcoverage": host["bss_global_coverage"],
+                    "bsshwfamily": host["bss_hw_family"],
+                    "bsslifecyclestatus": host["bss_lifecycle_status"],
+                    "status": 0,  # OK
+                    "giskleur": 0,  # GREEN
+                    "type": "HOST",
+                    "event_output": "Initial display - NS-TCC-GIS",
+                    "starttime": zulu.parse(host["timestamp"]).timestamp() * 1000,
+                    "longitude": host["longitude"],
+                    "latitude": host["latitude"]
+                }
+
+                if host["longitude"] is None or host["latitude"] is None:
+                    raise ValueError
+
+            except (TypeError, ValueError, KeyError):
+                logging.info(f"Invalid host feature data for host: {host}")
+                continue
+
             if not host_doc.exists:
                 # If host is not posted then make new feature on ArcGIS and save the ObjectID in the firestore
-                try:
-                    attributes = {
-                        "sitename": host["siteName"],
-                        "hostname": host["hostName"],
-                        "hostgroups": host["hostGroups"],
-                        "bssglobalcoverage": host["bssGlobalCoverage"],
-                        "bsshwfamily": host["bssHwFamily"],
-                        "bsslifecyclestatus": host["bssLifecycleStatus"],
-                        "status": 0,  # OK
-                        "giskleur": 0,  # GREEN
-                        "type": "HOST",
-                        "event_output": "Initial display - NS-TCC-GIS",
-                        "starttime": zulu.parse(host["timestamp"]).timestamp() * 1000
-                    }
 
-                    if host["longitude"] is None or host["latitude"] is None:
-                        raise ValueError
-
-                    response = add_feature(
-                        host["longitude"],
-                        host["latitude"],
-                        attributes,
-                        config.LAYER["hosts"]
-                    )
-
-                except (TypeError, ValueError):
-                    logging.info(f"Invalid host feature data for host: {host}")
-                    continue
+                response = add_feature(
+                    host["longitude"],
+                    host["latitude"],
+                    host,
+                    config.LAYER["hosts"]
+                )
 
                 if response["success"]:
                     logging.info(f"Successfully added '{host['id']}' as feature with objectId: {response['objectId']}")
 
-                    attributes["objectId"] = response["objectId"]
-                    attributes["longitude"] = host["longitude"]
-                    attributes["latitude"] = host["latitude"]
+                    host["objectId"] = response["objectId"]
 
-                    host_ref.set(attributes)
+                    host_ref.set(host)
                 else:
                     logging.error(f"Error while adding new host: {response['error']}")
             else:
@@ -170,12 +173,11 @@ def do_host(data):
                         continue
                     continue
                 else:
-                    keys = ["hostGroups", "bssGlobalCoverage", "bssHwFamily", "bssLifecycleStatus"]
+                    keys = ["hostgroups", "bssglobalcoverage", "bsshwfamily", "bsslifecyclestatus"]
 
                     doc_info_parsed = {k: host_info[k] for k in keys}
                     host_parsed = {k: host[k] for k in keys}
 
-                    # Check if hosts are the same and if it's been decommissioned before (endtime)
                     if doc_info_parsed == host_parsed:
                         logging.info(f"Host with id {host['id']} was already added")
                     else:
@@ -191,10 +193,10 @@ def do_host(data):
 
                         arcgis_updates = {
                             "objectid": host_info["objectId"],
-                            "host_groups": host["hostGroups"],
-                            "globalcoverage": host["bssGlobalCoverage"],
-                            "hwfamily": host["bssHwFamily"],
-                            "lifecyclestatus": host["bssLifecycleStatus"]
+                            "hostgroups": host["hostgroups"],
+                            "bssglobalcoverage": host["bssglobalcoverage"],
+                            "bsshwfamily": host["bsshwfamily"],
+                            "bsslifecyclestatus": host["bsslifecyclestatus"]
                         }
 
                         response = update_feature(
@@ -209,8 +211,7 @@ def do_host(data):
                         else:
                             logging.error(f"Failed to update feature: {response['error']}")
         except Exception as e:
-            logging.error(f"Error when processing host '{host['id']}': {e}")
-            logging.exception(e)
+            logging.exception(f"Error when processing host '{host['id']}': {e}")
 
 
 def do_event(data):
@@ -259,7 +260,6 @@ def do_event(data):
                 event_ref.set(attributes)
 
             # Get current "worst" states from all events of host
-
             event_docs = db.collection("events"). \
                 where("sitename", "==", event["siteName"]). \
                 where("hostname", "==", event["hostName"]).stream()
@@ -343,8 +343,7 @@ def do_event(data):
             else:
                 logging.info(f"Received event but host feature not updated. No new status for event: {unique_id_event}")
         except Exception as e:
-            logging.error(f"Error when processing event: {event['id']}")
-            logging.exception(e)
+            logging.exception(f"Error when processing event: {event['id']}: {e}")
 
 
 def main(request):

@@ -224,7 +224,7 @@ def do_event(data):
             host_ref = db.collection("hosts").document(unique_id_host)
             host_doc = host_ref.get()
 
-            event_ref = db.collection("events").document(unique_id_event)
+            event_ref = db.collection("events").document(unique_id_event.replace("/", ""))
             event_doc = event_ref.get()
 
             # Check if host exists

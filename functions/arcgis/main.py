@@ -225,8 +225,8 @@ def do_event(data):
     for event in data["ns_tcc_events"]:
         try:
             # Make unique identifier
-            unique_id_host = event["siteName"] + "_" + event["hostName"]
-            unique_id_event = event["siteName"] + "_" + event["hostName"] + "_" + event["serviceDescription"]
+            unique_id_host = event["sitename"] + "_" + event["hostname"]
+            unique_id_event = event["sitename"] + "_" + event["hostname"] + "_" + event["service_description"]
 
             host_ref = db.collection("hosts").document(unique_id_host)
             host_doc = host_ref.get()
@@ -245,14 +245,14 @@ def do_event(data):
                 converted_time = zulu.parse(event["timestamp"]).timestamp() * 1000
                 attributes = {
                     "id": event["id"],
-                    "sitename": event["siteName"],
+                    "sitename": event["sitename"],
                     "type": event["type"],
-                    "hostname": event["hostName"],
-                    "servicedescription": event["serviceDescription"],
-                    "statetype": event["stateType"],
+                    "hostname": event["hostname"],
+                    "servicedescription": event["service_description"],
+                    "statetype": event["state_type"],
                     "output": event["output"],
-                    "longoutput": event["longOutput"],
-                    "eventstate": event["eventState"],
+                    "longoutput": event["long_output"],
+                    "eventstate": event["event_state"],
                     "timestamp": converted_time
                 }
             except (ValueError, KeyError):
@@ -261,15 +261,15 @@ def do_event(data):
 
             # Check if event exists and update firestore
             if event_doc.exists:
-                if event["eventState"] != event_doc.to_dict()["eventstate"]:
+                if event["event_state"] != event_doc.to_dict()["eventstate"]:
                     event_ref.update(attributes)
             else:
                 event_ref.set(attributes)
 
             # Get current "worst" states from all events of host
             event_docs = db.collection("events"). \
-                where("sitename", "==", event["siteName"]). \
-                where("hostname", "==", event["hostName"]).stream()
+                where("sitename", "==", event["sitename"]). \
+                where("hostname", "==", event["hostname"]).stream()
 
             host_status = 0
             event_status = 0
@@ -314,8 +314,8 @@ def do_event(data):
                 if response["success"]:
                     # Add new host feature
                     attributes = {
-                        "sitename": event["siteName"],
-                        "hostname": event["hostName"],
+                        "sitename": event["sitename"],
+                        "hostname": event["hostname"],
                         "hostgroups": host_info["hostgroups"],
                         "bssglobalcoverage": host_info["bssglobalcoverage"],
                         "bsshwfamily": host_info["bsshwfamily"],

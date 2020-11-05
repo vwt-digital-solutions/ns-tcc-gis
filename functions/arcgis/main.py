@@ -90,7 +90,14 @@ def arcgis_feature(function, data, layer):
         "token": get_access_token()
     }
 
-    return requests.post(config.SERVICE_URL + f"/{layer}/applyEdits", data=data).json()
+    r = requests.post(config.SERVICE_URL + f"/{layer}/applyEdits", data=data)
+
+    try:
+        return r.json()
+    except json.decoder.JSONDecodeError as e:
+        logging.error(f"Status-code: {r.status_code}")
+        logging.error(f"Output:\n{r.text}")
+        logging.exception(e)
 
 
 def do_host(data):

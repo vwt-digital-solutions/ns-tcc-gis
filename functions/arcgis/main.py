@@ -114,19 +114,25 @@ def do_host(data):
                     "hostname": host["hostname"],
                     "decommissioned": host["decommissioned"],
                     "hostgroups": host["host_groups"],
-                    "bssglobalcoverage": host["bss_global_coverage"]["realvalue"],
-                    "bsshwfamily": host["bss_hw_family"]["realvalue"],
-                    "bsslifecyclestatus": host["bss_lifecycle_status"]["realvalue"],
                     "status": 0,  # OK
                     "giskleur": 0,  # GREEN
                     "type": "HOST",
                     "event_output": "Initial display - NS-TCC-GIS",
                     "starttime": zulu.parse(host["timestamp"]).timestamp() * 1000,
-                    "longitude": host["longitude"],
-                    "latitude": host["latitude"]
+                    "longitude": host["longitude"]["value"],
+                    "latitude": host["latitude"]["value"]
                 }
 
-                if host["longitude"] is None or host["latitude"] is None:
+                try:
+                    host["bssglobalcoverage"] = host["bss_global_coverage"]["realvalue"]
+                    host["bsshwfamily"] = host["bss_hw_family"]["realvalue"]
+                    host["bsslifecyclestatus"] = host["bss_lifecycle_status"]["realvalue"]
+                except KeyError:
+                    host["bssglobalcoverage"] = host["bss_global_coverage"]["value"]
+                    host["bsshwfamily"] = host["bss_hw_family"]["value"]
+                    host["bsslifecyclestatus"] = host["bss_lifecycle_status"]["value"]
+
+                if host["longitude"]["value"] is None or host["latitude"]["value"] is None:
                     raise ValueError
 
             except (TypeError, ValueError, KeyError):
@@ -137,8 +143,8 @@ def do_host(data):
                 # If host is not posted then make new feature on ArcGIS and save the ObjectID in the firestore
 
                 response = add_feature(
-                    host["longitude"],
-                    host["latitude"],
+                    host["longitude"]["value"],
+                    host["latitude"]["value"],
                     host,
                     config.LAYER["hosts"]
                 )

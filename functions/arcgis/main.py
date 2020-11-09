@@ -108,12 +108,24 @@ def do_host(data):
             host_doc = host_ref.get()
 
             try:
+                try:
+                    bssglobalcoverage = host["bss_global_coverage"]["realvalue"]
+                    bsshwfamily = host["bss_hw_family"]["realvalue"]
+                    bsslifecyclestatus = host["bss_lifecycle_status"]["realvalue"]
+                except KeyError:
+                    bssglobalcoverage = host["bss_global_coverage"]["value"]
+                    bsshwfamily = host["bss_hw_family"]["value"]
+                    bsslifecyclestatus = host["bss_lifecycle_status"]["value"]
+
                 host = {
                     "id": host["id"],
                     "sitename": host["sitename"],
                     "hostname": host["hostname"],
                     "decommissioned": host["decommissioned"],
                     "hostgroups": host["host_groups"],
+                    "bssglobalcoverage": bssglobalcoverage,
+                    "bsshwfamily": bsshwfamily,
+                    "bsslifecyclestatus": bsslifecyclestatus,
                     "status": 0,  # OK
                     "giskleur": 0,  # GREEN
                     "type": "HOST",
@@ -123,16 +135,7 @@ def do_host(data):
                     "latitude": host["latitude"]["value"]
                 }
 
-                try:
-                    host["bssglobalcoverage"] = host["bss_global_coverage"]["realvalue"]
-                    host["bsshwfamily"] = host["bss_hw_family"]["realvalue"]
-                    host["bsslifecyclestatus"] = host["bss_lifecycle_status"]["realvalue"]
-                except KeyError:
-                    host["bssglobalcoverage"] = host["bss_global_coverage"]["value"]
-                    host["bsshwfamily"] = host["bss_hw_family"]["value"]
-                    host["bsslifecyclestatus"] = host["bss_lifecycle_status"]["value"]
-
-                if host["longitude"]["value"] is None or host["latitude"]["value"] is None:
+                if host["longitude"] is None or host["latitude"] is None:
                     raise ValueError
 
             except (TypeError, ValueError, KeyError):
@@ -143,8 +146,8 @@ def do_host(data):
                 # If host is not posted then make new feature on ArcGIS and save the ObjectID in the firestore
 
                 response = add_feature(
-                    host["longitude"]["value"],
-                    host["latitude"]["value"],
+                    host["longitude"],
+                    host["latitude"],
                     host,
                     config.LAYER["hosts"]
                 )

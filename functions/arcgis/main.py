@@ -108,22 +108,31 @@ def do_host(data):
             host_doc = host_ref.get()
 
             try:
+                try:
+                    bssglobalcoverage = host["bss_global_coverage"]["realvalue"]
+                    bsshwfamily = host["bss_hw_family"]["realvalue"]
+                    bsslifecyclestatus = host["bss_lifecycle_status"]["realvalue"]
+                except KeyError:
+                    bssglobalcoverage = host["bss_global_coverage"]["value"]
+                    bsshwfamily = host["bss_hw_family"]["value"]
+                    bsslifecyclestatus = host["bss_lifecycle_status"]["value"]
+
                 host = {
                     "id": host["id"],
                     "sitename": host["sitename"],
                     "hostname": host["hostname"],
                     "decommissioned": host["decommissioned"],
                     "hostgroups": host["host_groups"],
-                    "bssglobalcoverage": host["bss_global_coverage"]["realvalue"],
-                    "bsshwfamily": host["bss_hw_family"]["realvalue"],
-                    "bsslifecyclestatus": host["bss_lifecycle_status"]["realvalue"],
+                    "bssglobalcoverage": bssglobalcoverage,
+                    "bsshwfamily": bsshwfamily,
+                    "bsslifecyclestatus": bsslifecyclestatus,
                     "status": 0,  # OK
                     "giskleur": 0,  # GREEN
                     "type": "HOST",
                     "event_output": "Initial display - NS-TCC-GIS",
                     "starttime": zulu.parse(host["timestamp"]).timestamp() * 1000,
-                    "longitude": host["longitude"],
-                    "latitude": host["latitude"]
+                    "longitude": host["longitude"]["value"],
+                    "latitude": host["latitude"]["value"]
                 }
 
                 if host["longitude"] is None or host["latitude"] is None:

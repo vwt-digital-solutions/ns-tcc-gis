@@ -217,18 +217,19 @@ def do_host(data):
             logging.exception(f"Error when processing host '{host['id']}': {e}")
 
 
-def do_event(data):
-    for event in data["ns_tcc_events"]:
+class EventProcessor:
+    def __init__(self):
+        pass
+
+    def process(self, event):
+        """
+        Process each event data
+
+        :param event: Event data
+        """
+
         try:
-            # Make unique identifier
-            unique_id_host = event["sitename"] + "_" + event["hostname"]
-            unique_id_event = (
-                event["sitename"]
-                + "_"
-                + event["hostname"]
-                + "_"
-                + event["service_description"]
-            )
+            unique_id_event, unique_id_host = self.make_unique_identifier(event)
 
             host_ref = db.collection("hosts").document(unique_id_host)
             host_doc = host_ref.get()
@@ -243,58 +244,29 @@ def do_event(data):
                 logging.info(
                     f"Trying to update host feature but no host info found with id: {unique_id_host}"
                 )
-                continue
+                return
 
             host_info = host_doc.to_dict()
 
-            try:
-                converted_time = zulu.parse(event["timestamp"]).timestamp() * 1000
-                attributes = {
-                    "id": event["id"],
-                    "sitename": event["sitename"],
-                    "type": event["type"],
-                    "hostname": event["hostname"],
-                    "servicedescription": event["service_description"],
-                    "statetype": event["state_type"],
-                    "output": event["output"],
-                    "longoutput": event["long_output"],
-                    "eventstate": event["event_state"],
-                    "timestamp": converted_time,
-                }
-            except (ValueError, KeyError):
-                logging.info(f"Invalid event feature data for event: {event}")
-                continue
+            attributes = self.get_attributes(event)
+            if not attributes:
+                return
 
             # Check if event exists and update firestore
             if event_doc.exists:
                 if event["event_state"] != event_doc.to_dict()["eventstate"]:
                     event_ref.update(attributes)
-            else:
+
+            if not event_doc.exists:
                 event_ref.set(attributes)
 
             # Get current "worst" states from all events of host
-            event_docs = (
-                db.collection("events")
-                .where("sitename", "==", event["sitename"])
-                .where("hostname", "==", event["hostname"])
-                .stream()
-            )
-
-            host_status = 0
-            event_status = 0
-            host_event_output = ""
-            service_event_output = ""
-            for doc in event_docs:
-                event_info = doc.to_dict()
-
-                if event_info["servicedescription"] == "":
-                    host_status = event_info["eventstate"]
-                    host_event_output = event_info["output"]
-                    continue
-
-                if event_info["eventstate"] > event_status:
-                    service_event_output = event_info["output"]
-                    event_status = event_info["eventstate"]
+            (
+                event_status,
+                host_event_output,
+                host_status,
+                service_event_output,
+            ) = self.get_worst_states_of_host(event)
 
             # Decide priority here...
             if host_status == 1 or host_status == 2 or event_status == 0:
@@ -307,72 +279,181 @@ def do_event(data):
                 output = service_event_output
 
             if host_info["status"] != status or host_info["type"] != event_type:
-                # Update old host feature
-                arcgis_updates = {
-                    "objectid": host_info["objectId"],
-                    "endtime": zulu.parse(event["timestamp"]).timestamp() * 1000,
-                }
-
-                response = update_feature(
-                    host_info["longitude"],
-                    host_info["latitude"],
-                    arcgis_updates,
-                    config.LAYER["hosts"],
+                self.update_host_status(
+                    event,
+                    event_type,
+                    host_info,
+                    host_ref,
+                    output,
+                    status,
+                    unique_id_event,
                 )
-
-                if response["success"]:
-                    # Add new host feature
-                    attributes = {
-                        "sitename": event["sitename"],
-                        "hostname": event["hostname"],
-                        "hostgroups": host_info["hostgroups"],
-                        "bssglobalcoverage": host_info["bssglobalcoverage"],
-                        "bsshwfamily": host_info["bsshwfamily"],
-                        "bsslifecyclestatus": host_info["bsslifecyclestatus"],
-                        "giskleur": status
-                        if event_type == "HOST"
-                        else (status + 9),  # For colouring in GIS
-                        "status": status,
-                        "type": event_type,
-                        "event_output": output,
-                        "starttime": zulu.parse(event["timestamp"]).timestamp() * 1000,
-                    }
-
-                    response = add_feature(
-                        host_info["longitude"],
-                        host_info["latitude"],
-                        attributes,
-                        config.LAYER["hosts"],
-                    )
-
-                    if response["success"]:
-                        host_ref.update(
-                            {
-                                "objectId": response["objectId"],
-                                "status": status,
-                                "type": event_type,
-                                "event_output": output,
-                                "starttime": zulu.parse(event["timestamp"]).timestamp()
-                                * 1000,
-                            }
-                        )
-                        logging.info(
-                            f"Successfully updated host feature with event id: {unique_id_event}"
-                        )
-                    else:
-                        logging.error(
-                            f"Error when adding host feature for event: {response['error']}"
-                        )
-                else:
-                    logging.error(
-                        f"Error when updating host feature for event: {response['error']}"
-                    )
             else:
                 logging.info(
                     f"Received event but host feature not updated. No new status for event: {unique_id_event}"
                 )
         except Exception as e:
             logging.exception(f"Error when processing event: {event['id']}: {e}")
+
+    @staticmethod
+    def update_host_status(
+        event, event_type, host_info, host_ref, output, status, unique_id_event
+    ):
+        """
+        Update host to new status
+
+        :param event: Event data
+        :param event_type: Event type
+        :param host_info: Host information
+        :param host_ref: Host reference
+        :param output: Output
+        :param status: Status
+        :param unique_id_event: Unique ID event
+        """
+
+        # Update old host feature
+        arcgis_updates = {
+            "objectid": host_info["objectId"],
+            "endtime": zulu.parse(event["timestamp"]).timestamp() * 1000,
+        }
+        response = update_feature(
+            host_info["longitude"],
+            host_info["latitude"],
+            arcgis_updates,
+            config.LAYER["hosts"],
+        )
+
+        if response["success"]:
+            gis_kleur = (
+                status if event_type == "HOST" else (status + 9)
+            )  # For colouring in GIS
+            start_time = (
+                zulu.parse(event["timestamp"]).timestamp() * 1000
+            )  # Format timestamp
+
+            # Add new host feature
+            attributes = {
+                "sitename": event["sitename"],
+                "hostname": event["hostname"],
+                "hostgroups": host_info["hostgroups"],
+                "bssglobalcoverage": host_info["bssglobalcoverage"],
+                "bsshwfamily": host_info["bsshwfamily"],
+                "bsslifecyclestatus": host_info["bsslifecyclestatus"],
+                "giskleur": gis_kleur,
+                "status": status,
+                "type": event_type,
+                "event_output": output,
+                "starttime": start_time,
+            }
+
+            response = add_feature(
+                host_info["longitude"],
+                host_info["latitude"],
+                attributes,
+                config.LAYER["hosts"],
+            )
+
+            if response["success"]:
+                host_ref.update(
+                    {
+                        "objectId": response["objectId"],
+                        "status": status,
+                        "type": event_type,
+                        "event_output": output,
+                        "starttime": zulu.parse(event["timestamp"]).timestamp() * 1000,
+                    }
+                )
+                logging.info(
+                    f"Successfully updated host feature with event id: {unique_id_event}"
+                )
+            else:
+                logging.error(
+                    f"Error when adding host feature for event: {response['error']}"
+                )
+        else:
+            logging.error(
+                f"Error when updating host feature for event: {response['error']}"
+            )
+
+    @staticmethod
+    def get_worst_states_of_host(event):
+        """
+        Return current "worst" states from all events of host
+
+        :param event: Event data
+        :return: Event status, Host event output, Host status, Service event output
+        """
+
+        host_status = 0
+        event_status = 0
+        host_event_output = ""
+        service_event_output = ""
+
+        event_docs = (
+            db.collection("events")
+            .where("sitename", "==", event["sitename"])
+            .where("hostname", "==", event["hostname"])
+            .stream()
+        )
+
+        for doc in event_docs:
+            event_info = doc.to_dict()
+
+            if event_info["servicedescription"] == "":
+                host_status = event_info["eventstate"]
+                host_event_output = event_info["output"]
+                continue
+
+            if event_info["eventstate"] > event_status:
+                service_event_output = event_info["output"]
+                event_status = event_info["eventstate"]
+
+        return event_status, host_event_output, host_status, service_event_output
+
+    @staticmethod
+    def get_attributes(event):
+        """
+        Return event attributes
+
+        :param event: Event Data
+        :return: Event attributes
+        """
+
+        try:
+            converted_time = zulu.parse(event["timestamp"]).timestamp() * 1000
+            attributes = {
+                "id": event["id"],
+                "sitename": event["sitename"],
+                "type": event["type"],
+                "hostname": event["hostname"],
+                "servicedescription": event["service_description"],
+                "statetype": event["state_type"],
+                "output": event["output"],
+                "longoutput": event["long_output"],
+                "eventstate": event["event_state"],
+                "timestamp": converted_time,
+            }
+        except (ValueError, KeyError):
+            logging.info(f"Invalid event feature data for event: {event}")
+            return None
+        else:
+            return attributes
+
+    @staticmethod
+    def make_unique_identifier(event):
+        """
+        Make unique identifier
+
+        :param event: Event Data
+        :return: Unique event ID, Unique host ID
+        """
+
+        unique_id_host = f"{event['sitename']}_{event['hostname']}"
+        unique_id_event = (
+            f"{event['sitename']}_{event['hostname']}_{event['service_description']}"
+        )
+
+        return unique_id_event, unique_id_host
 
 
 def main(request):
@@ -390,7 +471,10 @@ def main(request):
     if subscription == config.SUBS["host"]:
         do_host(data)
     elif subscription == config.SUBS["event"]:
-        do_event(data)
+        event_processor = EventProcessor()
+
+        for event in data["ns_tcc_events"]:
+            event_processor.process(event)
     else:
         logging.info(f"Invalid subscription received: {subscription}")
 

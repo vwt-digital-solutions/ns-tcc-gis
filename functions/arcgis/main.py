@@ -79,142 +79,213 @@ def arcgis_feature(function, data, layer):
         logging.error(f"An error occurred when applying edits: {str(e)}")
 
 
-def do_host(data):
-    for host in data["ns_tcc_hosts"]:
+class HostProcessor:
+    def __init__(self):
+        pass
+
+    def process(self, host):
+        """
+        Process each host data
+
+        :param host: Host data
+        """
+
         try:
             # Check if host is already posted on ArcGIS
             host_ref = db.collection("hosts").document(host["id"])
             host_doc = host_ref.get()
 
-            try:
-                try:
-                    bssglobalcoverage = host["bss_global_coverage"]["realvalue"]
-                    bsshwfamily = host["bss_hw_family"]["realvalue"]
-                    bsslifecyclestatus = host["bss_lifecycle_status"]["realvalue"]
-                except KeyError:
-                    bssglobalcoverage = host["bss_global_coverage"]["value"]
-                    bsshwfamily = host["bss_hw_family"]["value"]
-                    bsslifecyclestatus = host["bss_lifecycle_status"]["value"]
-
-                host = {
-                    "id": host["id"],
-                    "sitename": host["sitename"],
-                    "hostname": host["hostname"],
-                    "decommissioned": host["decommissioned"],
-                    "hostgroups": host["host_groups"],
-                    "bssglobalcoverage": bssglobalcoverage,
-                    "bsshwfamily": bsshwfamily,
-                    "bsslifecyclestatus": bsslifecyclestatus,
-                    "status": 0,  # OK
-                    "giskleur": 0,  # GREEN
-                    "type": "HOST",
-                    "event_output": "Initial display - NS-TCC-GIS",
-                    "starttime": zulu.parse(host["timestamp"]).timestamp() * 1000,
-                    "longitude": host["longitude"]["value"],
-                    "latitude": host["latitude"]["value"],
-                }
-
-                if host["longitude"] is None or host["latitude"] is None:
-                    raise ValueError
-
-            except (TypeError, ValueError, KeyError):
-                logging.info(f"Invalid host feature data for host: {host}")
-                continue
+            host = self.get_host_object(host)  # Get formatted host object
 
             if not host_doc.exists:
-                # If host is not posted then make new feature on ArcGIS and save the ObjectID in the firestore
-
-                response = add_feature(
-                    host["longitude"], host["latitude"], host, config.LAYER["hosts"]
-                )
-
-                if response["success"]:
-                    logging.info(
-                        f"Successfully added '{host['id']}' as feature with objectId: {response['objectId']}"
-                    )
-
-                    host["objectId"] = response["objectId"]
-
-                    host_ref.set(host)
-                else:
-                    logging.error(f"Error while adding new host: {response['error']}")
+                self.add_new_host(host, host_ref)
             else:
-                # Document exists so check if info from document and host data is the same
-                host_info = host_doc.to_dict()
-
-                # Check if host is decommissioned and then update
-                if host["decommissioned"]:
-                    host_ref.set({"endtime": host["timestamp"]}, merge=True)
-
-                    arcgis_updates = {
-                        "objectid": host_info["objectId"],
-                        "endtime": zulu.parse(host["timestamp"]).timestamp() * 1000,
-                    }
-
-                    response = update_feature(
-                        host_info["longitude"],
-                        host_info["latitude"],
-                        arcgis_updates,
-                        config.LAYER["hosts"],
-                    )
-
-                    if response["success"]:
-                        logging.info(
-                            f"Successfully updated decommissioned host: {host['id']}"
-                        )
-                    else:
-                        logging.error(
-                            f"Failed updating decommissioned host: {response['error']}"
-                        )
-                        continue
-                    continue
-                else:
-                    keys = [
-                        "hostgroups",
-                        "bssglobalcoverage",
-                        "bsshwfamily",
-                        "bsslifecyclestatus",
-                    ]
-
-                    doc_info_parsed = {k: host_info[k] for k in keys}
-                    host_parsed = {k: host[k] for k in keys}
-
-                    if doc_info_parsed == host_parsed:
-                        logging.info(f"Host with id {host['id']} was already added")
-                    else:
-                        # The data is not the same so the feature has to be updated.
-                        attributes = {}
-                        for key in keys:
-                            if host_info[key] != host[key]:
-                                attributes[key] = host[key]
-
-                        host_ref.update(attributes)
-
-                        arcgis_updates = {
-                            "objectid": host_info["objectId"],
-                            "hostgroups": host["hostgroups"],
-                            "bssglobalcoverage": host["bssglobalcoverage"],
-                            "bsshwfamily": host["bsshwfamily"],
-                            "bsslifecyclestatus": host["bsslifecyclestatus"],
-                        }
-
-                        response = update_feature(
-                            host_info["longitude"],
-                            host_info["latitude"],
-                            arcgis_updates,
-                            config.LAYER["hosts"],
-                        )
-
-                        if response["success"]:
-                            logging.info(
-                                f"Successfully updated feature with objectId: {host_info['objectId']}"
-                            )
-                        else:
-                            logging.error(
-                                f"Failed to update feature: {response['error']}"
-                            )
+                self.update_existing_host(host, host_doc, host_ref)
         except Exception as e:
             logging.exception(f"Error when processing host '{host['id']}': {e}")
+
+    def update_existing_host(self, host, host_doc, host_ref):
+        """
+        Check and update existing host
+
+        :param host: Host data
+        :param host_doc: Host Firestore document
+        :param host_ref: Host Firestore reference
+        """
+
+        # Document exists so check if info from document and host data is the same
+        host_info = host_doc.to_dict()
+
+        # Check if host is decommissioned and then update
+        if host["decommissioned"]:
+            self.update_existing_decommissioned_host(host, host_info, host_ref)
+        else:
+            self.update_existing_active_host(host, host_info, host_ref)
+
+    @staticmethod
+    def update_existing_active_host(host, host_info, host_ref):
+        """
+        Update existing active host
+
+        :param host: Host data
+        :param host_info: Host information
+        :param host_ref: Host Firestore reference
+        """
+
+        keys = [
+            "hostgroups",
+            "bssglobalcoverage",
+            "bsshwfamily",
+            "bsslifecyclestatus",
+        ]
+
+        doc_info_parsed = {k: host_info[k] for k in keys}
+        host_parsed = {k: host[k] for k in keys}
+
+        if doc_info_parsed == host_parsed:
+            logging.info(f"Host with id {host['id']} was already added")
+            return
+
+        # The data is not the same so the feature has to be updated.
+        attributes = {}
+        for key in keys:
+            if host_info[key] != host[key]:
+                attributes[key] = host[key]
+
+        host_ref.update(attributes)
+
+        arcgis_updates = {
+            "objectid": host_info["objectId"],
+            "hostgroups": host["hostgroups"],
+            "bssglobalcoverage": host["bssglobalcoverage"],
+            "bsshwfamily": host["bsshwfamily"],
+            "bsslifecyclestatus": host["bsslifecyclestatus"],
+        }
+
+        response = update_feature(
+            host_info["longitude"],
+            host_info["latitude"],
+            arcgis_updates,
+            config.LAYER["hosts"],
+        )
+
+        if response["success"]:
+            logging.info(
+                f"Successfully updated feature with objectId: {host_info['objectId']}"
+            )
+        else:
+            logging.error(f"Failed to update feature: {response['error']}")
+
+    @staticmethod
+    def update_existing_decommissioned_host(host, host_info, host_ref):
+        """
+        Update decommissioned host
+
+        :param host: Host data
+        :param host_info: Host information
+        :param host_ref: Host Firestore reference
+        """
+
+        host_ref.set({"endtime": host["timestamp"]}, merge=True)
+        arcgis_updates = {
+            "objectid": host_info["objectId"],
+            "endtime": zulu.parse(host["timestamp"]).timestamp() * 1000,
+        }
+
+        response = update_feature(
+            host_info["longitude"],
+            host_info["latitude"],
+            arcgis_updates,
+            config.LAYER["hosts"],
+        )
+
+        if response["success"]:
+            logging.info(f"Successfully updated decommissioned host: {host['id']}")
+        else:
+            logging.error(f"Failed updating decommissioned host: {response['error']}")
+
+    @staticmethod
+    def add_new_host(host, host_ref):
+        """
+        Add new host to ArcGIS and Firestore
+
+        :param host: Host data
+        :param host_ref: Host Firestore reference
+        """
+
+        response = add_feature(
+            host["longitude"], host["latitude"], host, config.LAYER["hosts"]
+        )
+
+        if response["success"]:
+            logging.info(
+                f"Successfully added '{host['id']}' as feature with objectId: {response['objectId']}"
+            )
+
+            host["objectId"] = response["objectId"]
+            host_ref.set(host)
+        else:
+            logging.error(f"Error while adding new host: {response['error']}")
+
+    def get_host_object(self, host):
+        """
+        Get host object
+
+        :param host: Host data
+        :return: Host data
+        """
+        try:
+            bssglobalcoverage, bsshwfamily, bsslifecyclestatus = self.get_bss_variables(
+                host
+            )
+            start_time = zulu.parse(host["timestamp"]).timestamp() * 1000
+
+            host = {
+                "id": host["id"],
+                "sitename": host["sitename"],
+                "hostname": host["hostname"],
+                "decommissioned": host["decommissioned"],
+                "hostgroups": host["host_groups"],
+                "bssglobalcoverage": bssglobalcoverage,
+                "bsshwfamily": bsshwfamily,
+                "bsslifecyclestatus": bsslifecyclestatus,
+                "status": 0,  # OK
+                "giskleur": 0,  # GREEN
+                "type": "HOST",
+                "event_output": "Initial display - NS-TCC-GIS",
+                "starttime": start_time,
+                "longitude": host["longitude"]["value"],
+                "latitude": host["latitude"]["value"],
+            }
+
+            if host["longitude"] is None or host["latitude"] is None:
+                raise ValueError
+
+        except (TypeError, ValueError, KeyError):
+            logging.info(f"Invalid host feature data for host: {host}")
+            return None
+        else:
+            return host
+
+    @staticmethod
+    def get_bss_variables(host):
+        """
+        Get BSS variables from host data
+
+        :param host: Host data
+        :return: BSS global coverage, BSS HW family, BSS life cycle status
+        """
+
+        try:
+            bssglobalcoverage = host["bss_global_coverage"]["realvalue"]
+            bsshwfamily = host["bss_hw_family"]["realvalue"]
+            bsslifecyclestatus = host["bss_lifecycle_status"]["realvalue"]
+        except KeyError:
+            bssglobalcoverage = host["bss_global_coverage"]["value"]
+            bsshwfamily = host["bss_hw_family"]["value"]
+            bsslifecyclestatus = host["bss_lifecycle_status"]["value"]
+
+        return bssglobalcoverage, bsshwfamily, bsslifecyclestatus
 
 
 class EventProcessor:
@@ -469,7 +540,10 @@ def main(request):
         return "Error", 500
 
     if subscription == config.SUBS["host"]:
-        do_host(data)
+        host_processor = HostProcessor()
+
+        for host in data["ns_tcc_hosts"]:
+            host_processor.process(host)
     elif subscription == config.SUBS["event"]:
         event_processor = EventProcessor()
 

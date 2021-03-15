@@ -34,54 +34,96 @@ def get_access_token():
     return response["token"]
 
 
-def add_feature(x, y, attributes, layer):
-    adds = [
-        {
-            "geometry": {
-                "x": float(x),
-                "y": float(y),
-                "spatalReference": {"wkid": 4326},
-            },
-            "attributes": attributes,
-        }
-    ]
+class ArcGISProcessor:
+    def __init__(self):
+        self.token = get_access_token()
 
-    res = arcgis_feature("adds", adds, layer)
+    def apply_edits(self, function, data, layer):
+        """
+        Apply ArcGIS edits
 
-    return res["addResults"][0]
+        :param function: Function
+        :param data: ArcGIS data
+        :param layer: ArcGIS layer
+        """
 
+        data = {function: str(data), "f": "json", "token": self.token}
 
-def update_feature(x, y, attributes, layer):
-    updates = [{"geometry": {"x": float(x), "y": float(y)}, "attributes": attributes}]
+        r = requests.post(config.SERVICE_URL + f"/{layer}/applyEdits", data=data)
 
-    res = arcgis_feature("updates", updates, layer)
+        try:
+            return r.json()
+        except json.decoder.JSONDecodeError as e:
+            logging.error(f"Status-code: {r.status_code}")
+            logging.error(f"An error occurred when applying edits: {str(e)}")
 
-    return res["updateResults"][0]
+    def add_feature(self, x, y, attributes, layer):
+        """
+        Add ArcGIS Feature
 
+        :param x: X-coordinate
+        :param y: Y-coordinate
+        :param attributes: Feature attributes
+        :param layer: Feature layer
 
-def delete_feature(object_id, layer):
-    data = [object_id]
+        :return: ArcGIS feature ID
+        """
 
-    res = arcgis_feature("deletes", data, layer)
+        adds = [
+            {
+                "geometry": {
+                    "x": float(x),
+                    "y": float(y),
+                    "spatalReference": {"wkid": 4326},
+                },
+                "attributes": attributes,
+            }
+        ]
 
-    return res["deleteResults"][0]
+        res = self.apply_edits("adds", adds, layer)
 
+        return res["addResults"][0]
 
-def arcgis_feature(function, data, layer):
-    data = {function: str(data), "f": "json", "token": get_access_token()}
+    def update_feature(self, x, y, attributes, layer):
+        """
+        Update ArcGIS Feature
 
-    r = requests.post(config.SERVICE_URL + f"/{layer}/applyEdits", data=data)
+        :param x: X-coordinate
+        :param y: Y-coordinate
+        :param attributes: Feature attributes
+        :param layer: Feature layer
 
-    try:
-        return r.json()
-    except json.decoder.JSONDecodeError as e:
-        logging.error(f"Status-code: {r.status_code}")
-        logging.error(f"An error occurred when applying edits: {str(e)}")
+        :return: ArcGIS feature ID
+        """
+
+        updates = [
+            {"geometry": {"x": float(x), "y": float(y)}, "attributes": attributes}
+        ]
+
+        res = self.apply_edits("updates", updates, layer)
+
+        return res["updateResults"][0]
+
+    def delete_feature(self, object_id, layer):
+        """
+        Delete ArcGIS feature
+
+        :param object_id: Feature ID
+        :param layer: Feature layer
+
+        :return: ArcGIS feature ID
+        """
+
+        data = [object_id]
+
+        res = self.apply_edits("deletes", data, layer)
+
+        return res["deleteResults"][0]
 
 
 class HostProcessor:
-    def __init__(self):
-        pass
+    def __init__(self, arcgis_processor):
+        self.arcgis_processor = arcgis_processor
 
     def process(self, host):
         """
@@ -122,8 +164,7 @@ class HostProcessor:
         else:
             self.update_existing_active_host(host, host_info, host_ref)
 
-    @staticmethod
-    def update_existing_active_host(host, host_info, host_ref):
+    def update_existing_active_host(self, host, host_info, host_ref):
         """
         Update existing active host
 
@@ -162,7 +203,7 @@ class HostProcessor:
             "bsslifecyclestatus": host["bsslifecyclestatus"],
         }
 
-        response = update_feature(
+        response = self.arcgis_processor.update_feature(
             host_info["longitude"],
             host_info["latitude"],
             arcgis_updates,
@@ -176,8 +217,7 @@ class HostProcessor:
         else:
             logging.error(f"Failed to update feature: {response['error']}")
 
-    @staticmethod
-    def update_existing_decommissioned_host(host, host_info, host_ref):
+    def update_existing_decommissioned_host(self, host, host_info, host_ref):
         """
         Update decommissioned host
 
@@ -192,7 +232,7 @@ class HostProcessor:
             "endtime": zulu.parse(host["timestamp"]).timestamp() * 1000,
         }
 
-        response = update_feature(
+        response = self.arcgis_processor.update_feature(
             host_info["longitude"],
             host_info["latitude"],
             arcgis_updates,
@@ -204,8 +244,7 @@ class HostProcessor:
         else:
             logging.error(f"Failed updating decommissioned host: {response['error']}")
 
-    @staticmethod
-    def add_new_host(host, host_ref):
+    def add_new_host(self, host, host_ref):
         """
         Add new host to ArcGIS and Firestore
 
@@ -213,7 +252,7 @@ class HostProcessor:
         :param host_ref: Host Firestore reference
         """
 
-        response = add_feature(
+        response = self.arcgis_processor.add_feature(
             host["longitude"], host["latitude"], host, config.LAYER["hosts"]
         )
 
@@ -232,6 +271,7 @@ class HostProcessor:
         Get host object
 
         :param host: Host data
+
         :return: Host data
         """
         try:
@@ -273,6 +313,7 @@ class HostProcessor:
         Get BSS variables from host data
 
         :param host: Host data
+
         :return: BSS global coverage, BSS HW family, BSS life cycle status
         """
 
@@ -289,8 +330,8 @@ class HostProcessor:
 
 
 class EventProcessor:
-    def __init__(self):
-        pass
+    def __init__(self, arcgis_processor):
+        self.arcgis_processor = arcgis_processor
 
     def process(self, event):
         """
@@ -366,9 +407,8 @@ class EventProcessor:
         except Exception as e:
             logging.exception(f"Error when processing event: {event['id']}: {e}")
 
-    @staticmethod
     def update_host_status(
-        event, event_type, host_info, host_ref, output, status, unique_id_event
+        self, event, event_type, host_info, host_ref, output, status, unique_id_event
     ):
         """
         Update host to new status
@@ -387,7 +427,7 @@ class EventProcessor:
             "objectid": host_info["objectId"],
             "endtime": zulu.parse(event["timestamp"]).timestamp() * 1000,
         }
-        response = update_feature(
+        response = self.arcgis_processor.update_feature(
             host_info["longitude"],
             host_info["latitude"],
             arcgis_updates,
@@ -417,7 +457,7 @@ class EventProcessor:
                 "starttime": start_time,
             }
 
-            response = add_feature(
+            response = self.arcgis_processor.add_feature(
                 host_info["longitude"],
                 host_info["latitude"],
                 attributes,
@@ -452,6 +492,7 @@ class EventProcessor:
         Return current "worst" states from all events of host
 
         :param event: Event data
+
         :return: Event status, Host event output, Host status, Service event output
         """
 
@@ -487,6 +528,7 @@ class EventProcessor:
         Return event attributes
 
         :param event: Event Data
+
         :return: Event attributes
         """
 
@@ -516,6 +558,7 @@ class EventProcessor:
         Make unique identifier
 
         :param event: Event Data
+
         :return: Unique event ID, Unique host ID
         """
 
@@ -539,13 +582,15 @@ def main(request):
         logging.error(f"Extracting of data failed: {e}")
         return "Error", 500
 
+    arcgis_processor = ArcGISProcessor()
+
     if subscription == config.SUBS["host"]:
-        host_processor = HostProcessor()
+        host_processor = HostProcessor(arcgis_processor=arcgis_processor)
 
         for host in data["ns_tcc_hosts"]:
             host_processor.process(host)
     elif subscription == config.SUBS["event"]:
-        event_processor = EventProcessor()
+        event_processor = EventProcessor(arcgis_processor=arcgis_processor)
 
         for event in data["ns_tcc_events"]:
             event_processor.process(event)

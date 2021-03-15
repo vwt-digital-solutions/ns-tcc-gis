@@ -1,44 +1,23 @@
 import base64
 import json
 import logging
-import os
 
 import config
 import requests
+import secretmanager
 import zulu
-from google.cloud import firestore_v1, secretmanager_v1
+from google.cloud import firestore_v1
 
-db = firestore_v1.Client()
-
-
-def get_access_token():
-    secret_client = secretmanager_v1.SecretManagerServiceClient()
-
-    secret_name = secret_client.secret_version_path(
-        os.environ["PROJECT_ID"], os.environ["SECRET_NAME"], "latest"
-    )
-
-    response = secret_client.access_secret_version(secret_name)
-    secret = response.payload.data.decode("UTF-8")
-
-    data = {
-        "f": "json",
-        "username": config.CLIENT_USERNAME,
-        "password": secret,
-        "request": "gettoken",
-        "referer": config.CLIENT_REFERER,
-    }
-
-    response = requests.post(config.OAUTH_URL, data=data).json()
-
-    return response["token"]
+db_client = firestore_v1.Client()
+arcgis_access_token = secretmanager.get_access_token()
 
 
 class ArcGISProcessor:
     def __init__(self):
-        self.token = get_access_token()
+        pass
 
-    def apply_edits(self, function, data, layer):
+    @staticmethod
+    def apply_edits(function, data, layer):
         """
         Apply ArcGIS edits
 
@@ -47,7 +26,7 @@ class ArcGISProcessor:
         :param layer: ArcGIS layer
         """
 
-        data = {function: str(data), "f": "json", "token": self.token}
+        data = {function: str(data), "f": "json", "token": arcgis_access_token}
 
         r = requests.post(config.SERVICE_URL + f"/{layer}/applyEdits", data=data)
 
@@ -134,7 +113,7 @@ class HostProcessor:
 
         try:
             # Check if host is already posted on ArcGIS
-            host_ref = db.collection("hosts").document(host["id"])
+            host_ref = db_client.collection("hosts").document(host["id"])
             host_doc = host_ref.get()
 
             host = self.get_host_object(host)  # Get formatted host object
@@ -343,10 +322,10 @@ class EventProcessor:
         try:
             unique_id_event, unique_id_host = self.make_unique_identifier(event)
 
-            host_ref = db.collection("hosts").document(unique_id_host)
+            host_ref = db_client.collection("hosts").document(unique_id_host)
             host_doc = host_ref.get()
 
-            event_ref = db.collection("events").document(
+            event_ref = db_client.collection("events").document(
                 unique_id_event.replace("/", "")
             )
             event_doc = event_ref.get()
@@ -502,7 +481,7 @@ class EventProcessor:
         service_event_output = ""
 
         event_docs = (
-            db.collection("events")
+            db_client.collection("events")
             .where("sitename", "==", event["sitename"])
             .where("hostname", "==", event["hostname"])
             .stream()

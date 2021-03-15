@@ -1,14 +1,12 @@
 import base64
 import json
 import logging
-import zulu
-import requests
 import os
 
 import config
-
-from google.cloud import firestore_v1
-from google.cloud import secretmanager_v1
+import requests
+import zulu
+from google.cloud import firestore_v1, secretmanager_v1
 
 db = firestore_v1.Client()
 
@@ -17,9 +15,7 @@ def get_access_token():
     secret_client = secretmanager_v1.SecretManagerServiceClient()
 
     secret_name = secret_client.secret_version_path(
-        os.environ["PROJECT_ID"],
-        os.environ["SECRET_NAME"],
-        "latest"
+        os.environ["PROJECT_ID"], os.environ["SECRET_NAME"], "latest"
     )
 
     response = secret_client.access_secret_version(secret_name)
@@ -30,7 +26,7 @@ def get_access_token():
         "username": config.CLIENT_USERNAME,
         "password": secret,
         "request": "gettoken",
-        "referer": config.CLIENT_REFERER
+        "referer": config.CLIENT_REFERER,
     }
 
     response = requests.post(config.OAUTH_URL, data=data).json()
@@ -44,11 +40,9 @@ def add_feature(x, y, attributes, layer):
             "geometry": {
                 "x": float(x),
                 "y": float(y),
-                "spatalReference": {
-                    "wkid": 4326
-                }
+                "spatalReference": {"wkid": 4326},
             },
-            "attributes": attributes
+            "attributes": attributes,
         }
     ]
 
@@ -58,15 +52,7 @@ def add_feature(x, y, attributes, layer):
 
 
 def update_feature(x, y, attributes, layer):
-    updates = [
-        {
-            "geometry": {
-                "x": float(x),
-                "y": float(y)
-            },
-            "attributes": attributes
-        }
-    ]
+    updates = [{"geometry": {"x": float(x), "y": float(y)}, "attributes": attributes}]
 
     res = arcgis_feature("updates", updates, layer)
 
@@ -74,9 +60,7 @@ def update_feature(x, y, attributes, layer):
 
 
 def delete_feature(object_id, layer):
-    data = [
-        object_id
-    ]
+    data = [object_id]
 
     res = arcgis_feature("deletes", data, layer)
 
@@ -84,11 +68,7 @@ def delete_feature(object_id, layer):
 
 
 def arcgis_feature(function, data, layer):
-    data = {
-        function: str(data),
-        "f": "json",
-        "token": get_access_token()
-    }
+    data = {function: str(data), "f": "json", "token": get_access_token()}
 
     r = requests.post(config.SERVICE_URL + f"/{layer}/applyEdits", data=data)
 
@@ -96,8 +76,7 @@ def arcgis_feature(function, data, layer):
         return r.json()
     except json.decoder.JSONDecodeError as e:
         logging.error(f"Status-code: {r.status_code}")
-        logging.error(f"Output:\n{r.text}")
-        logging.exception(e)
+        logging.error(f"An error occurred when applying edits: {str(e)}")
 
 
 def do_host(data):
@@ -132,7 +111,7 @@ def do_host(data):
                     "event_output": "Initial display - NS-TCC-GIS",
                     "starttime": zulu.parse(host["timestamp"]).timestamp() * 1000,
                     "longitude": host["longitude"]["value"],
-                    "latitude": host["latitude"]["value"]
+                    "latitude": host["latitude"]["value"],
                 }
 
                 if host["longitude"] is None or host["latitude"] is None:
@@ -146,14 +125,13 @@ def do_host(data):
                 # If host is not posted then make new feature on ArcGIS and save the ObjectID in the firestore
 
                 response = add_feature(
-                    host["longitude"],
-                    host["latitude"],
-                    host,
-                    config.LAYER["hosts"]
+                    host["longitude"], host["latitude"], host, config.LAYER["hosts"]
                 )
 
                 if response["success"]:
-                    logging.info(f"Successfully added '{host['id']}' as feature with objectId: {response['objectId']}")
+                    logging.info(
+                        f"Successfully added '{host['id']}' as feature with objectId: {response['objectId']}"
+                    )
 
                     host["objectId"] = response["objectId"]
 
@@ -166,30 +144,37 @@ def do_host(data):
 
                 # Check if host is decommissioned and then update
                 if host["decommissioned"]:
-                    host_ref.set({
-                        "endtime": host["timestamp"]
-                    }, merge=True)
+                    host_ref.set({"endtime": host["timestamp"]}, merge=True)
 
                     arcgis_updates = {
                         "objectid": host_info["objectId"],
-                        "endtime": zulu.parse(host["timestamp"]).timestamp() * 1000
+                        "endtime": zulu.parse(host["timestamp"]).timestamp() * 1000,
                     }
 
                     response = update_feature(
                         host_info["longitude"],
                         host_info["latitude"],
                         arcgis_updates,
-                        config.LAYER["hosts"]
+                        config.LAYER["hosts"],
                     )
 
                     if response["success"]:
-                        logging.info(f"Successfully updated decommissioned host: {host['id']}")
+                        logging.info(
+                            f"Successfully updated decommissioned host: {host['id']}"
+                        )
                     else:
-                        logging.error(f"Failed updating decommissioned host: {response['error']}")
+                        logging.error(
+                            f"Failed updating decommissioned host: {response['error']}"
+                        )
                         continue
                     continue
                 else:
-                    keys = ["hostgroups", "bssglobalcoverage", "bsshwfamily", "bsslifecyclestatus"]
+                    keys = [
+                        "hostgroups",
+                        "bssglobalcoverage",
+                        "bsshwfamily",
+                        "bsslifecyclestatus",
+                    ]
 
                     doc_info_parsed = {k: host_info[k] for k in keys}
                     host_parsed = {k: host[k] for k in keys}
@@ -203,29 +188,31 @@ def do_host(data):
                             if host_info[key] != host[key]:
                                 attributes[key] = host[key]
 
-                        host_ref.update(
-                            attributes
-                        )
+                        host_ref.update(attributes)
 
                         arcgis_updates = {
                             "objectid": host_info["objectId"],
                             "hostgroups": host["hostgroups"],
                             "bssglobalcoverage": host["bssglobalcoverage"],
                             "bsshwfamily": host["bsshwfamily"],
-                            "bsslifecyclestatus": host["bsslifecyclestatus"]
+                            "bsslifecyclestatus": host["bsslifecyclestatus"],
                         }
 
                         response = update_feature(
                             host_info["longitude"],
                             host_info["latitude"],
                             arcgis_updates,
-                            config.LAYER["hosts"]
+                            config.LAYER["hosts"],
                         )
 
                         if response["success"]:
-                            logging.info(f"Successfully updated feature with objectId: {host_info['objectId']}")
+                            logging.info(
+                                f"Successfully updated feature with objectId: {host_info['objectId']}"
+                            )
                         else:
-                            logging.error(f"Failed to update feature: {response['error']}")
+                            logging.error(
+                                f"Failed to update feature: {response['error']}"
+                            )
         except Exception as e:
             logging.exception(f"Error when processing host '{host['id']}': {e}")
 
@@ -235,17 +222,27 @@ def do_event(data):
         try:
             # Make unique identifier
             unique_id_host = event["sitename"] + "_" + event["hostname"]
-            unique_id_event = event["sitename"] + "_" + event["hostname"] + "_" + event["service_description"]
+            unique_id_event = (
+                event["sitename"]
+                + "_"
+                + event["hostname"]
+                + "_"
+                + event["service_description"]
+            )
 
             host_ref = db.collection("hosts").document(unique_id_host)
             host_doc = host_ref.get()
 
-            event_ref = db.collection("events").document(unique_id_event.replace("/", ""))
+            event_ref = db.collection("events").document(
+                unique_id_event.replace("/", "")
+            )
             event_doc = event_ref.get()
 
             # Check if host exists
             if not host_doc.exists:
-                logging.info(f"Trying to update host feature but no host info found with id: {unique_id_host}")
+                logging.info(
+                    f"Trying to update host feature but no host info found with id: {unique_id_host}"
+                )
                 continue
 
             host_info = host_doc.to_dict()
@@ -262,7 +259,7 @@ def do_event(data):
                     "output": event["output"],
                     "longoutput": event["long_output"],
                     "eventstate": event["event_state"],
-                    "timestamp": converted_time
+                    "timestamp": converted_time,
                 }
             except (ValueError, KeyError):
                 logging.info(f"Invalid event feature data for event: {event}")
@@ -276,9 +273,12 @@ def do_event(data):
                 event_ref.set(attributes)
 
             # Get current "worst" states from all events of host
-            event_docs = db.collection("events"). \
-                where("sitename", "==", event["sitename"]). \
-                where("hostname", "==", event["hostname"]).stream()
+            event_docs = (
+                db.collection("events")
+                .where("sitename", "==", event["sitename"])
+                .where("hostname", "==", event["hostname"])
+                .stream()
+            )
 
             host_status = 0
             event_status = 0
@@ -310,14 +310,14 @@ def do_event(data):
                 # Update old host feature
                 arcgis_updates = {
                     "objectid": host_info["objectId"],
-                    "endtime": zulu.parse(event["timestamp"]).timestamp() * 1000
+                    "endtime": zulu.parse(event["timestamp"]).timestamp() * 1000,
                 }
 
                 response = update_feature(
                     host_info["longitude"],
                     host_info["latitude"],
                     arcgis_updates,
-                    config.LAYER["hosts"]
+                    config.LAYER["hosts"],
                 )
 
                 if response["success"]:
@@ -329,35 +329,48 @@ def do_event(data):
                         "bssglobalcoverage": host_info["bssglobalcoverage"],
                         "bsshwfamily": host_info["bsshwfamily"],
                         "bsslifecyclestatus": host_info["bsslifecyclestatus"],
-                        "giskleur": status if event_type == "HOST" else (status + 9),  # For colouring in GIS
+                        "giskleur": status
+                        if event_type == "HOST"
+                        else (status + 9),  # For colouring in GIS
                         "status": status,
                         "type": event_type,
                         "event_output": output,
-                        "starttime": zulu.parse(event["timestamp"]).timestamp() * 1000
+                        "starttime": zulu.parse(event["timestamp"]).timestamp() * 1000,
                     }
 
                     response = add_feature(
                         host_info["longitude"],
                         host_info["latitude"],
                         attributes,
-                        config.LAYER["hosts"]
+                        config.LAYER["hosts"],
                     )
 
                     if response["success"]:
-                        host_ref.update({
-                            "objectId": response["objectId"],
-                            "status": status,
-                            "type": event_type,
-                            "event_output": output,
-                            "starttime": zulu.parse(event["timestamp"]).timestamp() * 1000
-                        })
-                        logging.info(f"Successfully updated host feature with event id: {unique_id_event}")
+                        host_ref.update(
+                            {
+                                "objectId": response["objectId"],
+                                "status": status,
+                                "type": event_type,
+                                "event_output": output,
+                                "starttime": zulu.parse(event["timestamp"]).timestamp()
+                                * 1000,
+                            }
+                        )
+                        logging.info(
+                            f"Successfully updated host feature with event id: {unique_id_event}"
+                        )
                     else:
-                        logging.error(f"Error when adding host feature for event: {response['error']}")
+                        logging.error(
+                            f"Error when adding host feature for event: {response['error']}"
+                        )
                 else:
-                    logging.error(f"Error when updating host feature for event: {response['error']}")
+                    logging.error(
+                        f"Error when updating host feature for event: {response['error']}"
+                    )
             else:
-                logging.info(f"Received event but host feature not updated. No new status for event: {unique_id_event}")
+                logging.info(
+                    f"Received event but host feature not updated. No new status for event: {unique_id_event}"
+                )
         except Exception as e:
             logging.exception(f"Error when processing event: {event['id']}: {e}")
 
@@ -367,7 +380,7 @@ def main(request):
         envelope = json.loads(request.data.decode("utf-8"))
         decoded = base64.b64decode(envelope["message"]["data"])
         data = json.loads(decoded)
-        subscription = envelope["subscription"].split('/')[-1]
+        subscription = envelope["subscription"].split("/")[-1]
 
         logging.info(f"Read message from subscription {subscription}")
     except Exception as e:
@@ -381,4 +394,4 @@ def main(request):
     else:
         logging.info(f"Invalid subscription received: {subscription}")
 
-    return 'OK', 204
+    return "OK", 204

@@ -1,4 +1,7 @@
+import json
+import logging
 import os
+import sys
 
 import config
 import requests
@@ -29,6 +32,10 @@ def get_access_token():
         "referer": config.CLIENT_REFERER,
     }
 
-    response = requests.post(config.OAUTH_URL, data=data).json()
-
-    return response["token"]
+    try:
+        response = requests.post(config.OAUTH_URL, data=data).json()
+    except json.decoder.JSONDecodeError as e:
+        logging.error(f"An error occurred when retrieving token: {str(e)}")
+        sys.exit(1)
+    else:
+        return response["token"]

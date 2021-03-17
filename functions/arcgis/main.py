@@ -116,12 +116,12 @@ class HostProcessor:
             host_ref = db_client.collection("hosts").document(host["id"])
             host_doc = host_ref.get()
 
-            host = self.get_host_object(host)  # Get formatted host object
+            host_formatted = self.get_host_object(host)  # Get formatted host object
 
             if not host_doc.exists:
-                self.add_new_host(host, host_ref)
+                self.add_new_host(host_formatted, host_ref)
             else:
-                self.update_existing_host(host, host_doc, host_ref)
+                self.update_existing_host(host_formatted, host_doc, host_ref)
         except Exception as e:
             logging.exception(f"Error when processing host '{host['id']}': {e}")
 

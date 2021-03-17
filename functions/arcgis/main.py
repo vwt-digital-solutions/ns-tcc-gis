@@ -231,6 +231,10 @@ class HostProcessor:
         :param host_ref: Host Firestore reference
         """
 
+        if not host:
+            logging.error(f"Error while adding host {host_ref}: No content")
+            return
+
         response = self.arcgis_processor.add_feature(
             host["longitude"], host["latitude"], host, config.LAYER["hosts"]
         )

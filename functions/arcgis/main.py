@@ -232,7 +232,7 @@ class HostProcessor:
         """
 
         if not host:
-            logging.error(f"Error while adding host {host_ref}: No content")
+            logging.error(f"Error while adding host {host_ref.path}: No content")
             return
 
         response = self.arcgis_processor.add_feature(

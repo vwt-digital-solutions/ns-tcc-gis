@@ -118,6 +118,9 @@ class HostProcessor:
 
             host_formatted = self.get_host_object(host)  # Get formatted host object
 
+            if not host_formatted:
+                return
+
             if not host_doc.exists:
                 self.add_new_host(host_formatted, host_ref)
             else:
@@ -231,10 +234,6 @@ class HostProcessor:
         :param host_ref: Host Firestore reference
         """
 
-        if not host:
-            logging.error(f"Error while adding host {host_ref.path}: No content")
-            return
-
         response = self.arcgis_processor.add_feature(
             host["longitude"], host["latitude"], host, config.LAYER["hosts"]
         )
@@ -284,8 +283,8 @@ class HostProcessor:
             if host["longitude"] is None or host["latitude"] is None:
                 raise ValueError
 
-        except (TypeError, ValueError, KeyError):
-            logging.info(f"Invalid host feature data for host: {host}")
+        except (TypeError, ValueError, KeyError) as e:
+            logging.info(f"Invalid host feature data for host: {host}: {str(e)}")
             return None
         else:
             return host

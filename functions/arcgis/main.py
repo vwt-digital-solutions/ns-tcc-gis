@@ -31,10 +31,14 @@ class ArcGISProcessor:
         r = requests.post(config.SERVICE_URL + f"/{layer}/applyEdits", data=data)
 
         try:
-            return r.json()
+            response_json = r.json()
         except json.decoder.JSONDecodeError as e:
-            logging.error(f"Status-code: {r.status_code}")
-            logging.error(f"An error occurred when applying edits: {str(e)}")
+            logging.error(
+                f"An error occurred when applying edits (status-code: {r.status_code}): {str(e)}"
+            )
+            return None
+        else:
+            return response_json
 
     def add_feature(self, x, y, attributes, layer):
         """
@@ -81,7 +85,10 @@ class ArcGISProcessor:
 
         res = self.apply_edits("updates", updates, layer)
 
-        return res["updateResults"][0]
+        if res:
+            return res["updateResults"][0]
+
+        return None
 
     def delete_feature(self, object_id, layer):
         """

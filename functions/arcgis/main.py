@@ -65,7 +65,10 @@ class ArcGISProcessor:
 
         res = self.apply_edits("adds", adds, layer)
 
-        return res["addResults"][0]
+        if res and "addResults" in res:
+            return res["addResults"][0]
+
+        return None
 
     def update_feature(self, x, y, attributes, layer):
         """
@@ -85,7 +88,7 @@ class ArcGISProcessor:
 
         res = self.apply_edits("updates", updates, layer)
 
-        if res:
+        if res and "updateResults" in res:
             return res["updateResults"][0]
 
         return None
@@ -104,7 +107,10 @@ class ArcGISProcessor:
 
         res = self.apply_edits("deletes", data, layer)
 
-        return res["deleteResults"][0]
+        if res and "deleteResults" in res:
+            return res["deleteResults"][0]
+
+        return None
 
 
 class HostProcessor:

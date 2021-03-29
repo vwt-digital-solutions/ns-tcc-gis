@@ -429,7 +429,7 @@ class EventProcessor:
             config.LAYER["hosts"],
         )
 
-        if response["success"]:
+        if response and "success" in response:
             gis_kleur = (
                 status if event_type == "HOST" else (status + 9)
             )  # For colouring in GIS

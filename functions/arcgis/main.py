@@ -36,7 +36,7 @@ class ArcGISProcessor:
             logging.error(
                 f"An error occurred when applying edits (status-code: {r.status_code}): {str(e)}"
             )
-            return None
+            return str(e)
         else:
             return response_json
 
@@ -68,7 +68,7 @@ class ArcGISProcessor:
         if res and "addResults" in res:
             return res["addResults"][0]
 
-        return None
+        return res
 
     def update_feature(self, x, y, attributes, layer):
         """
@@ -91,7 +91,7 @@ class ArcGISProcessor:
         if res and "updateResults" in res:
             return res["updateResults"][0]
 
-        return None
+        return res
 
     def delete_feature(self, object_id, layer):
         """
@@ -110,7 +110,7 @@ class ArcGISProcessor:
         if res and "deleteResults" in res:
             return res["deleteResults"][0]
 
-        return None
+        return res
 
 
 class HostProcessor:
@@ -205,12 +205,12 @@ class HostProcessor:
             config.LAYER["hosts"],
         )
 
-        if response["success"]:
+        if "success" in response:
             logging.info(
                 f"Successfully updated feature with objectId: {host_info['objectId']}"
             )
         else:
-            logging.error(f"Failed to update feature: {response['error']}")
+            logging.error(f"Failed to update feature: {json.dumps(response)}")
 
     def update_existing_decommissioned_host(self, host, host_info, host_ref):
         """
@@ -234,10 +234,12 @@ class HostProcessor:
             config.LAYER["hosts"],
         )
 
-        if response["success"]:
+        if "success" in response:
             logging.info(f"Successfully updated decommissioned host: {host['id']}")
         else:
-            logging.error(f"Failed updating decommissioned host: {response['error']}")
+            logging.error(
+                f"Failed updating decommissioned host: {json.dumps(response)}"
+            )
 
     def add_new_host(self, host, host_ref):
         """
@@ -251,7 +253,7 @@ class HostProcessor:
             host["longitude"], host["latitude"], host, config.LAYER["hosts"]
         )
 
-        if response["success"]:
+        if "success" in response:
             logging.info(
                 f"Successfully added '{host['id']}' as feature with objectId: {response['objectId']}"
             )
@@ -259,7 +261,7 @@ class HostProcessor:
             host["objectId"] = response["objectId"]
             host_ref.set(host)
         else:
-            logging.error(f"Error while adding new host: {response['error']}")
+            logging.error(f"Error while adding new host: {json.dumps(response)}")
 
     def get_host_object(self, host):
         """
@@ -429,7 +431,7 @@ class EventProcessor:
             config.LAYER["hosts"],
         )
 
-        if response and "success" in response:
+        if "success" in response:
             gis_kleur = (
                 status if event_type == "HOST" else (status + 9)
             )  # For colouring in GIS
@@ -459,7 +461,7 @@ class EventProcessor:
                 config.LAYER["hosts"],
             )
 
-            if response["success"]:
+            if "success" in response:
                 host_ref.update(
                     {
                         "objectId": response["objectId"],
@@ -474,11 +476,11 @@ class EventProcessor:
                 )
             else:
                 logging.error(
-                    f"Error when adding host feature for event: {response['error']}"
+                    f"Error when adding host feature for event: {json.dumps(response)}"
                 )
         else:
             logging.error(
-                f"Error when updating host feature for event: {response['error']}"
+                f"Error when updating host feature for event: {json.dumps(response)}"
             )
 
     @staticmethod

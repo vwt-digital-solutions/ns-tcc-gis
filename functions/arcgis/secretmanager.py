@@ -8,11 +8,12 @@ import requests
 from google.cloud import secretmanager_v1
 
 
-def get_access_token():
+def get_secret_token():
     """
     Get Access Token from Secret Manager
 
     :return: Secret Manager secret
+    :rtype: str
     """
 
     secret_client = secretmanager_v1.SecretManagerServiceClient()
@@ -23,6 +24,20 @@ def get_access_token():
 
     response = secret_client.access_secret_version(secret_name)
     secret = response.payload.data.decode("UTF-8")
+
+    return secret
+
+
+def get_arcgis_token(secret):
+    """
+    Get ArcGIS access token
+
+    :param secret: ArcGIS secret
+    :type secret: str
+
+    :return: ArcGIS access token
+    :rtype: str
+    """
 
     data = {
         "f": "json",
@@ -35,7 +50,7 @@ def get_access_token():
     try:
         response = requests.post(config.OAUTH_URL, data=data).json()
     except json.decoder.JSONDecodeError as e:
-        logging.error(f"An error occurred when retrieving token: {str(e)}")
+        logging.error(f"An error occurred when retrieving ArcGIS token: {str(e)}")
         sys.exit(1)
     else:
         return response["token"]

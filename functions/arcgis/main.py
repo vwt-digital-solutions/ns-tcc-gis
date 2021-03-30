@@ -9,15 +9,14 @@ import zulu
 from google.cloud import firestore_v1
 
 db_client = firestore_v1.Client()
-arcgis_access_token = secretmanager.get_access_token()
+arcgis_secret = secretmanager.get_secret_token()
 
 
 class ArcGISProcessor:
     def __init__(self):
-        pass
+        self.arcgis_access_token = secretmanager.get_arcgis_token(arcgis_secret)
 
-    @staticmethod
-    def apply_edits(function, data, layer):
+    def apply_edits(self, function, data, layer):
         """
         Apply ArcGIS edits
 
@@ -26,7 +25,7 @@ class ArcGISProcessor:
         :param layer: ArcGIS layer
         """
 
-        data = {function: str(data), "f": "json", "token": arcgis_access_token}
+        data = {function: str(data), "f": "json", "token": self.arcgis_access_token}
 
         r = requests.post(config.SERVICE_URL + f"/{layer}/applyEdits", data=data)
 

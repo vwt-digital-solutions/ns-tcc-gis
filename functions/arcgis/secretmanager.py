@@ -49,7 +49,7 @@ def get_arcgis_token(secret):
 
     try:
         response = requests.post(config.OAUTH_URL, data=data).json()
-    except json.decoder.JSONDecodeError as e:
+    except (requests.exceptions.ConnectionError, json.decoder.JSONDecodeError) as e:
         logging.error(f"An error occurred when retrieving ArcGIS token: {str(e)}")
         sys.exit(1)
     else:

@@ -579,6 +579,8 @@ def main(request):
         return "Error", 500
 
     arcgis_processor = ArcGISProcessor()
+    if not arcgis_processor.arcgis_access_token:
+        return "Error", 500
 
     if subscription == config.SUBS["host"]:
         host_processor = HostProcessor(arcgis_processor=arcgis_processor)

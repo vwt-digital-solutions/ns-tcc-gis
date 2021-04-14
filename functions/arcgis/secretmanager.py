@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import sys
 
 import config
 import requests
@@ -51,6 +50,6 @@ def get_arcgis_token(secret):
         response = requests.post(config.OAUTH_URL, data=data).json()
     except (requests.exceptions.ConnectionError, json.decoder.JSONDecodeError) as e:
         logging.error(f"An error occurred when retrieving ArcGIS token: {str(e)}")
-        sys.exit(1)
+        return None
     else:
         return response["token"]

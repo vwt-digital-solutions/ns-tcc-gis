@@ -1,6 +1,8 @@
 import base64
 import json
 import logging
+import operator
+from functools import reduce
 
 import config
 import requests
@@ -290,12 +292,12 @@ class HostProcessor:
                 "type": "HOST",
                 "event_output": "Initial display - NS-TCC-GIS",
                 "starttime": start_time,
-                "longitude": host["longitude"]["value"],
-                "latitude": host["latitude"]["value"],
+                "longitude": get_from_dict(host, ["longitude", "value"]),
+                "latitude": get_from_dict(host, ["latitude", "value"]),
             }
 
             if host["longitude"] is None or host["latitude"] is None:
-                raise ValueError
+                raise ValueError("Longitude and/or latitude is missing")
 
         except (TypeError, ValueError, KeyError) as e:
             logging.info(f"Invalid host feature data for host: {host}: {str(e)}")
@@ -313,14 +315,20 @@ class HostProcessor:
         :return: BSS global coverage, BSS HW family, BSS life cycle status
         """
 
-        try:
-            bssglobalcoverage = host["bss_global_coverage"]["realvalue"]
-            bsshwfamily = host["bss_hw_family"]["realvalue"]
-            bsslifecyclestatus = host["bss_lifecycle_status"]["realvalue"]
-        except KeyError:
-            bssglobalcoverage = host["bss_global_coverage"]["value"]
-            bsshwfamily = host["bss_hw_family"]["value"]
-            bsslifecyclestatus = host["bss_lifecycle_status"]["value"]
+        for field in ["bss_global_coverage/realvalue", "bss_global_coverage/value"]:
+            bssglobalcoverage = get_from_dict(host, field.split("/"))
+            if bssglobalcoverage:
+                break
+
+        for field in ["bss_hw_family/realvalue", "bss_hw_family/value"]:
+            bsshwfamily = get_from_dict(host, field.split("/"))
+            if bsshwfamily:
+                break
+
+        for field in ["bss_lifecycle_status/realvalue", "bss_lifecycle_status/value"]:
+            bsslifecyclestatus = get_from_dict(host, field.split("/"))
+            if bsslifecyclestatus:
+                break
 
         return bssglobalcoverage, bsshwfamily, bsslifecyclestatus
 
@@ -566,6 +574,14 @@ class EventProcessor:
         return unique_id_event, unique_id_host
 
 
+def get_from_dict(data_dict, map_list):
+    """Returns a dictionary based on a mapping"""
+    try:
+        return reduce(operator.getitem, map_list, data_dict)
+    except (KeyError, AttributeError, TypeError):
+        return None
+
+
 def main(request):
     try:
         envelope = json.loads(request.data.decode("utf-8"))
@@ -579,6 +595,8 @@ def main(request):
         return "Error", 500
 
     arcgis_processor = ArcGISProcessor()
+    if not arcgis_processor.arcgis_access_token:
+        return "Error", 500
 
     if subscription == config.SUBS["host"]:
         host_processor = HostProcessor(arcgis_processor=arcgis_processor)

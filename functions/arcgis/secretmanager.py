@@ -46,10 +46,27 @@ def get_arcgis_token(secret):
         "referer": config.CLIENT_REFERER,
     }
 
+    gis_r = None
+
     try:
-        response = requests.post(config.OAUTH_URL, data=data).json()
-    except (requests.exceptions.ConnectionError, json.decoder.JSONDecodeError) as e:
-        logging.error(f"An error occurred when retrieving ArcGIS token: {str(e)}")
+        gis_r = requests.post(config.OAUTH_URL, data=data)
+        gis_r.raise_for_status()
+
+        r_json = gis_r.json()
+
+        if "token" in r_json:
+            return r_json["token"]
+
+        logging.error(
+            f"An error occurred when retrieving ArcGIS token: {r_json.get('error', gis_r.content)}"
+        )
         return None
-    else:
-        return response["token"]
+    except (
+        requests.exceptions.ConnectionError,
+        requests.exceptions.HTTPError,
+        json.decoder.JSONDecodeError,
+    ) as e:
+        logging.error(
+            f"An error occurred when retrieving ArcGIS token: {str(e)} ({gis_r.content})"
+        )
+        return None

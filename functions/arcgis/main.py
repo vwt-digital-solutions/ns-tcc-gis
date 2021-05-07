@@ -7,6 +7,7 @@ from functools import reduce
 import config
 import requests
 import secretmanager
+import utils
 import zulu
 from google.cloud import firestore_v1
 
@@ -16,7 +17,7 @@ arcgis_secret = secretmanager.get_secret_token()
 
 class ArcGISProcessor:
     def __init__(self):
-        self.arcgis_access_token = secretmanager.get_arcgis_token(arcgis_secret)
+        self.arcgis_access_token = utils.get_arcgis_token(arcgis_secret)
 
     def apply_edits(self, function, data, layer):
         """

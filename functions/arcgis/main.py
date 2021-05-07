@@ -17,7 +17,7 @@ arcgis_secret = secretmanager.get_secret_token()
 
 class ArcGISProcessor:
     def __init__(self):
-        self.arcgis_access_token = utils.get_arcgis_token(arcgis_secret)
+        self.arcgis_access_token = utils.get_feature_service_token(arcgis_secret)
 
     def apply_edits(self, function, data, layer):
         """
